@@ -1,0 +1,91 @@
+{% extends "base.html" %} {% block title %}Creating a poll{% endblock title %} {% block body %}
+
+<script>
+    var options_list = new Array();
+    // TODO: input validation
+    function changeName() {
+        let name = document.getElementById("poll_name").value;
+        if (!(name.trim() === "")) {
+            document.getElementById("poll_name_preview").innerHTML = name;
+        }
+    }
+
+    function addOption() {
+        let name = document.getElementById("option_name").value;
+        if (!(name.trim() === "")) {
+            let options = document.getElementById("poll_options");
+
+            var div = document.createElement("div");
+            div.className = "poll_option";
+
+            var option = document.createElement("input");
+            {% match poll_type %}
+            {% when PollType:: Multiple %}
+            option.type = "checkbox";
+            {% when PollType:: Single %}
+            option.type = "radio";
+            {% when PollType::Ranked with (_) %}
+            option.type = "number";
+            {% endmatch %}
+
+            option.value = name;
+            option.name = "poll_preview";
+            div.appendChild(option);
+
+            var label = document.createElement("label");
+            label.for = name;
+            label.textContent = name;
+            div.appendChild(label);
+
+            options.appendChild(div);
+
+            options_list.push(name);
+        } else {
+            let error = document.getElementById("error");
+            error.innerHTML = "Option name cannot be empty";
+        }
+    }
+
+    function onSubmit(event) {
+        if (options_list.length < 2) {
+            let error = document.getElementById("error");
+            error.innerHTML = "Poll needs to have at least 2 options";
+            event.preventDefault();
+            return false;
+        }
+        let name = document.getElementById("poll_name_preview").innerHTML;
+
+        let ptype = '{{ poll_type }}';
+        let request = `/create/poll?ptype=${ptype}&name=${name}&options=${options_list.join(',')}`;
+        window.location.assign(request);
+        event.preventDefault();
+    }
+</script>
+
+<label for="poll_name">Poll name: </label><br>
+<input type="text" name="poll_name" id="poll_name" maxlength="100">
+<button onclick="changeName();">Change</button>
+<br />
+
+<label for="option_name">Option name: </label><br>
+<input type="text" name="option_name" id="option_name" maxlength="100">
+<button onclick="addOption();">Add</button>
+<br />
+
+<p id="error"></p>
+
+<h3>Poll preview</h3>
+<form id="form">
+    <legend id="poll_name_preview">Unnamed poll</legend>
+    <fieldset id="poll_fieldset">
+        <div id="poll_options">
+        </div>
+        <button type="submit">Submit</button>
+        <script>
+            const form = document.getElementById('form');
+            form.addEventListener('submit', onSubmit);
+        </script>
+    </fieldset>
+</form>
+
+{% endblock body %}

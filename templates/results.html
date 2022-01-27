@@ -1,0 +1,36 @@
+{% extends "base.html" %} {% block title %}Voting on poll {{ poll_id }}{% endblock %} {% block body %}
+
+<h2>Poll: {{ poll_name }}</h2>
+
+<legend>{{ poll_name }}</legend>
+<div id="poll_results">
+    {% let (_, max) = options_sorted[0] %}
+    {% let sum = ((options_sorted.len() - 1) / 2) * options_sorted.len() %}
+    {% let points = sum|into_isize * voters|into_isize %}
+
+    <table>
+        {% for (name, num) in options_sorted %}
+        {% let percent = (num.clone()|into_f64 / points|into_f64) * 100.0 %}
+        <tr id="result_entry">
+            <td><label for="opt{{- loop.index0 }}">{{ name }}</label></td>
+            <td><progress id="opt{{- loop.index0 }}" value="{{ num }}" max="{{ max }}"></progress></td>
+            {% match poll_type %}
+            {% when PollType::Ranked with (_) %}
+            <td><span id="result_numbers">{{ num }} points ({{ "{:.2}"|format(percent) }})%</span></td>
+            {% else %}
+            <td><span id="result_numbers">{{ num }} votes ({{ "{:.2}"|format(percent) }})%</span></td>
+            {% endmatch %}
+        </tr>
+        {% endfor %}
+    </table>
+    {% match poll_type %}
+    {% when PollType::Ranked with (_) %}
+    <p id="voters_count">Voters total: {{ voters }}; Points total: {{ points }}</p>
+    {% else %}
+    <p id="voters_count">Voters total: {{ voters }}</p>
+    {% endmatch %}
+
+</div>
+</form>
+
+{% endblock %}

@@ -1,0 +1,30 @@
+<table>
+    <tr>
+        {%- for (name, num) in options -%}
+        <th>{{ loop.index }}</th>
+        {%- endfor -%}
+        {%- if can_unranked -%}
+        <th>-</th>
+        {%- endif -%}
+    </tr>
+
+    {%- for (name, num, ) in options -%}
+    {%- let outer = loop.index0 -%}
+    <tr>
+        {%- for (name, num) in options %}
+        <td>
+            <input type="{{ input_type }}" id="{{outer}}_{{loop.index0}}" value="{{ loop.index0 }}" name="{{ outer }}"
+                {%- if !can_unranked && loop.index0==outer %} checked {% endif %}/>
+        </td>
+        {%- endfor %}
+        {%- if can_unranked %}
+        <td>
+            <input type="{{ input_type }}" id="{{outer}}_{{max}}" value="{{ max }}" name="{{ loop.index0 }}" checked />
+        </td>
+        {%- endif %}
+        <td>
+            <label for="opt{{- loop.index0 }}">{{ name }}</label>
+        </td>
+    </tr>
+    {%- endfor -%}
+</table>

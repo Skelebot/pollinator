@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Create a single choice poll</title>
+    <link rel="stylesheet" type="text/css" href="/static/poll.css">
+</head>
+
+<body>
+    <script>
+        var options_list = new Array();
+        // TODO: input validation
+        function changeName() {
+            let name = document.getElementById("poll_name").value;
+            if (!(name.trim() === "")) {
+                document.getElementById("poll_name_preview").innerHTML = name;
+            }
+        }
+
+        function addOption() {
+            let name = document.getElementById("option_name").value;
+            if (!(name.trim() === "")) {
+                let options = document.getElementById("poll_options");
+
+                var option = document.createElement("input");
+                option.type = "radio";
+                option.value = name;
+                option.name = "poll_preview";
+                options.appendChild(option);
+
+                var label = document.createElement("label");
+                label.for = name;
+                label.textContent = name;
+                options.appendChild(label);
+
+                options.appendChild(document.createElement("br"));
+                options_list.push(name);
+            }
+        }
+
+        function sendPollData() {
+            let name = document.getElementById("poll_name_preview").innerHTML;
+
+            let request = `/create/poll?ptype=Single&name=${name}&options=${options_list.join(',')}`;
+            window.location.assign(request);
+        }
+    </script>
+
+    <label for="poll_name">Poll name: </label>
+    <input type="text" name="poll_name" id="poll_name">
+    <button onclick="changeName();">Change</button>
+    <br />
+
+    <label for="option_name">Option name: </label>
+    <input type="text" name="option_name" id="option_name">
+    <button onclick="addOption();">Add</button>
+    <br />
+
+    <h3>Poll preview</h3>
+    <form>
+        <legend id="poll_name_preview">Poll name</legend>
+        <fieldset id="poll_fieldset">
+            <div id="poll_options">
+            </div>
+            <button type="button" onclick="sendPollData();">Submit</button>
+        </fieldset>
+    </form>
+</body>
+
+</html>

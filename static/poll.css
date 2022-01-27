@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Lato&display=swap');
+body {
+    font-family: 'Lato', 'Fira Sans', sans-serif;
+    margin: auto;
+    max-width: 800px;
+    background-color: #222;
+    color: #eee;
+    padding: 1rem;
+}
+
+legend {
+    margin: .4em;
+    font-weight: bold;
+}
+
+#result_entry > td:first-child {
+    text-align: right;
+}
+
+input {
+    margin: .4rem;
+}
+
+#poll_option {
+    display: block;
+}
+
+#poll_option:last-child {
+    margin-bottom: 1em;
+}
+
+#poll_option > details {
+    margin-left: 2em;
+    margin-bottom: .5em;
+}
+
+button {
+    padding: .5em 1em;
+    border: none;
+    border-radius: 5px;
+    color: #efefef;
+    background-color: #535353;
+    transition: .2s;
+}
+
+button:hover {
+    background-color: #444;
+}
+
+input[type=radio] {
+    cursor: pointer;
+}
+
+input[type=checkbox] {
+    cursor: pointer;
+}
+
+form.input {
+    display: block;
+}
+
+#error {
+    color: #f55;
+}

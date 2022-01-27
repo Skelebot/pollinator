@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset=UTF-8>
+    <title>Create poll</title>
+    <link rel="stylesheet" type="text/css" href="static/poll.css">
+</head>
+
+<body>
+    <form>
+        <legend>Select poll type:</legend>
+        <fieldset>
+            <h4>Simple choice</h4>
+            <div class="poll_option">
+                <input type="radio" id="single" value="Single" name="poll_type" checked />
+                <label for="single">Single choice</label>
+            </div>
+            <div class="poll_option">
+                <input type="radio" id="multiple" value="Multiple" name="poll_type" />
+                <label for="multiple">Multiple choice</label>
+            </div>
+            <div class="poll_option">
+                <h4>Ranked choice</h4>
+                <div class="poll_option">
+                    <input type="radio" id="ranked_borda" value="RankedBorda" name="poll_type" />
+                    <label for="ranked_borda">Ranked (Borda count)</label>
+                    <details>
+                        Borda count, points assigned in form of <i>n-p</i>,
+                        where n = number of options and p = position on ballot.<br>
+                        The highest-ranked option gets n - 1 points.<br>
+                        The lowest-ranked option gets 0 points (<i>n - n</i>).<br>
+                        <strong>
+                            Particularly susceptible to distortion through the presence of options which are
+                            mostly irrelevant (rarely come into consideration) and strategic voting.
+                        </strong>
+                    </details>
+                </div>
+                <div class="poll_option">
+                    <input type="radio" id="ranked_dowdall" value="RankedDowdall" name="poll_type" />
+                    <label for="ranked_dowdall">Ranked (Dowdall count)</label>
+                    <details>
+                        Dowdall / Nauru system. Very similar to Borda count, but is more favorable to options
+                        with many first preferences.<br>
+                        Points assigned in form of <i>1/p</i>,
+                        where p = position on ballot - the first-ranked option gets 1 point,
+                        the second gets 1/2 of a point, the third 1/3 of a point, etc.
+                    </details>
+                </div>
+                <!-- TODO: Score count -->
+            </div>
+            <button type="submit">Submit</button>
+        </fieldset>
+    </form>
+</body>
+
+</html>

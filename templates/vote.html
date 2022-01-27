@@ -1,0 +1,99 @@
+{% extends "base.html" %} {% block title %}Voting on poll {{ poll_id }}{% endblock %} {%- block body -%}
+
+<h2>Voting on poll: {{ poll_name }}</h2>
+
+<form action="/vote/{{ poll_id }}/response">
+    <legend>{{ poll_name }}</legend>
+    <fieldset>
+
+        {%- let max = options.len() -%}
+
+        {%- match poll_type -%}
+        {%- when PollType::Multiple -%}
+        {%- for (name, num, ) in options -%}
+        <div class="poll_option">
+            <input type="checkbox" id="option_box" value="{{ loop.index0 }}" name="response" />
+            <label for="opt{{- loop.index0 }}">{{ name }}</label>
+        </div>
+        {%- endfor -%}
+        {%- when PollType::Single -%}
+        {%- for (name, num, ) in options -%}
+        <div class="poll_option">
+            <input type="radio" id="option_box" value="{{ loop.index0 }}" name="response" {% if loop.first %} checked {%
+                endif %} />
+            <label for="opt{{- loop.index0 }}">{{ name }}</label>
+        </div>
+        {%- endfor -%}
+        {%- when PollType::Ranked with (system) -%}
+        {%- let can_unranked = poll_type.can_unranked() -%}
+        {%- match system -%}
+
+        {%- when PositionalSystem::Borda -%}
+        {%- let input_type = "radio" -%}
+        {%- include "vote_table.html" -%}
+
+        {%- when PositionalSystem::Dowdall -%}
+        {%- let input_type = "radio" -%}
+        {%- include "vote_table.html" -%}
+
+        {%- when PositionalSystem::Score with (scale) -%}
+        {%- let input_type = "checkbox" -%}
+        {%- include "vote_table.html" %}
+
+        {%- else -%}
+        {# Shouldn't happen #}
+        {%- endmatch -%}
+        {%- endmatch -%}
+
+        <button type="submit">Submit</button>
+    </fieldset>
+</form>
+
+{%- if poll_type.unique_scores() %}
+{%- match poll_type %}
+{%- when PollType::Ranked with (system) %}
+    {%- let x_max %}
+        {%- if poll_type.can_unranked() %}
+            {%- let x_max = max + 1 %}
+        {%- else %}
+            {%- let x_max = max %}
+    {%- endif %}
+<script>
+    var radios = new Array({{ max }});
+    var checks = new Array({{ max }});
+    for (var y = 0; y < {{ max }}; y++) {
+        radios[y] = new Array({{ x_max }});
+        for (var x = 0; x < {{ x_max }}; x++) {
+            radios[y][x] = document.getElementById(`${y}_${x}`);
+            if (radios[y][x].checked) checks[y] = x;
+            radios[y][x].onclick = swap_with;
+        }
+    }
+    function swap_with(event) {
+        let y = parseInt(event.target.name);
+        let x = parseInt(event.target.value);
+
+        {%- if poll_type.can_unranked() -%}
+        if (x == {{max}}) {
+            checks[y] = {{max}};
+            return;
+        }
+        {%- endif -%}
+
+        let prev_x = checks[y];
+        checks[y] = x;
+        for (var iy = 0; iy < {{ max }}; iy++) {
+            if (iy == y) { continue; }
+            if (radios[iy][x].checked) {
+                radios[iy][x].checked = false;
+                radios[iy][prev_x].checked = true;
+                checks[iy] = prev_x;
+            }
+        }
+    }
+</script>
+{%- else %}
+{%- endmatch %}
+{%- endif -%}
+
+{%- endblock %}
