@@ -2,6 +2,7 @@
 
 <script>
     var options_list = new Array();
+    var can_unranked = false;
     // TODO: input validation
     function changeName() {
         let name = document.getElementById("poll_name").value;
@@ -10,40 +11,51 @@
         }
     }
 
+    {% match poll_type %}
+    {% when PollType::Ranked with (_) %}
+    var max = 0;
+    var x_max = 0;
+    {% include "unique_scores.js" %}
+    {% else %}
+    {% endmatch %}
+
     function addOption() {
-        let name = document.getElementById("option_name").value;
-        if (!(name.trim() === "")) {
-            let options = document.getElementById("poll_options");
+        let option_name = document.getElementById("option_name").value;
 
-            var div = document.createElement("div");
-            div.className = "poll_option";
-
-            var option = document.createElement("input");
-            {% match poll_type %}
-            {% when PollType:: Multiple %}
-            option.type = "checkbox";
-            {% when PollType:: Single %}
-            option.type = "radio";
-            {% when PollType::Ranked with (_) %}
-            option.type = "number";
-            {% endmatch %}
-
-            option.value = name;
-            option.name = "poll_preview";
-            div.appendChild(option);
-
-            var label = document.createElement("label");
-            label.for = name;
-            label.textContent = name;
-            div.appendChild(label);
-
-            options.appendChild(div);
-
-            options_list.push(name);
+        if (!(option_name.trim() === "")) {
+            options_list.push(option_name);
+            redrawPreview();
+            return;
         } else {
             let error = document.getElementById("error");
             error.innerHTML = "Option name cannot be empty";
         }
+    }
+
+    function redrawPreview() {
+        let options = document.getElementById("poll_options");
+        options.innerHTML = "";
+
+        {%- match poll_type %}
+        {%- when PollType::Multiple %}
+            let input_type = "checkbox";
+            {%- include "vote_list_gen.js" %}
+        {%- when PollType::Single %}
+            let input_type = "radio";
+            {%- include "vote_list_gen.js" %}
+        {%- when PollType::Ranked with (system) %}
+            {%- include "vote_table_gen.js" %}
+
+            // extend the limit of voting grid script and update it's references 
+            max += 1;
+            x_max += 1;
+            if (can_unranked) {
+                x_max = max + 1;
+            } else {
+                x_max = max;
+            }
+            update_radios();
+        {%- endmatch -%}
     }
 
     function onSubmit(event) {
@@ -55,8 +67,7 @@
         }
         let name = document.getElementById("poll_name_preview").innerHTML;
 
-        let ptype = '{{ poll_type }}';
-        let request = `/create/poll?ptype=${ptype}&name=${name}&options=${options_list.join(',')}`;
+        let request = `/create/poll?ptype={{ poll_type }}&name=${name}&options=${options_list.join(',')}`;
         window.location.assign(request);
         event.preventDefault();
     }
@@ -76,16 +87,19 @@
 
 <h3>Poll preview</h3>
 <form id="form">
-    <legend id="poll_name_preview">Unnamed poll</legend>
     <fieldset id="poll_fieldset">
+        <legend id="poll_name_preview">Unnamed poll</legend>
+
         <div id="poll_options">
+            <i>Your options will be shown here</i>
         </div>
-        <button type="submit">Submit</button>
-        <script>
-            const form = document.getElementById('form');
-            form.addEventListener('submit', onSubmit);
-        </script>
+        <button type="button">Submit</button>
     </fieldset>
+    <button type="submit">Create poll</button>
+    <script>
+        const form = document.getElementById('form');
+        form.addEventListener('submit', onSubmit);
+    </script>
 </form>
 
 {% endblock body %}

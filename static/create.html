@@ -4,14 +4,16 @@
 <head>
     <meta charset=UTF-8>
     <title>Create poll</title>
-    <link rel="stylesheet" type="text/css" href="static/poll.css">
+    <link rel="stylesheet" type="text/css" href="/static/poll.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Antoni Simka">
 </head>
 
 <body>
     <form>
-        <legend>Select poll type:</legend>
         <fieldset>
-            <h4>Simple choice</h4>
+            <legend>Select poll type:</legend>
+            <h4>Simple</h4>
             <div class="poll_option">
                 <input type="radio" id="single" value="Single" name="poll_type" checked />
                 <label for="single">Single choice</label>
@@ -26,6 +28,7 @@
                     <input type="radio" id="ranked_borda" value="RankedBorda" name="poll_type" />
                     <label for="ranked_borda">Ranked (Borda count)</label>
                     <details>
+                        <summary>Details</summary>
                         Borda count, points assigned in form of <i>n-p</i>,
                         where n = number of options and p = position on ballot.<br>
                         The highest-ranked option gets n - 1 points.<br>
@@ -40,6 +43,7 @@
                     <input type="radio" id="ranked_dowdall" value="RankedDowdall" name="poll_type" />
                     <label for="ranked_dowdall">Ranked (Dowdall count)</label>
                     <details>
+                        <summary>Details</summary>
                         Dowdall / Nauru system. Very similar to Borda count, but is more favorable to options
                         with many first preferences.<br>
                         Points assigned in form of <i>1/p</i>,

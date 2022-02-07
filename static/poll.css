@@ -3,35 +3,58 @@ body {
     font-family: 'Lato', 'Fira Sans', sans-serif;
     margin: auto;
     max-width: 800px;
-    background-color: #222;
+    background-color: #111;
     color: #eee;
     padding: 1rem;
+}
+
+h3, h4 {
+    margin-top: 2rem;
+}
+
+fieldset > h4:first-of-type {
+    margin-top: .5rem;
 }
 
 legend {
     margin: .4em;
     font-weight: bold;
+    padding: .1em 1em;
 }
 
-#result_entry > td:first-child {
+fieldset {
+    padding: 1em;
+    margin: 1em 0;
+}
+
+.result_entry > td:first-child {
     text-align: right;
 }
 
-input {
+table input {
     margin: .4rem;
 }
 
-#poll_option {
+.poll_option {
     display: block;
+    margin-bottom: .2em;
 }
 
-#poll_option:last-child {
+.poll_option label {
+    margin-left: .2em;
+}
+
+.poll_option:last-of-type {
     margin-bottom: 1em;
 }
 
-#poll_option > details {
+.poll_option > details {
     margin-left: 2em;
     margin-bottom: .5em;
+}
+
+#poll_options {
+    margin-bottom: 1em;
 }
 
 button {
@@ -39,16 +62,29 @@ button {
     border: none;
     border-radius: 5px;
     color: #efefef;
-    background-color: #535353;
+    background-color: #444;
     transition: .2s;
 }
 
 button:hover {
-    background-color: #444;
+    background-color: #666;
 }
 
 input[type=radio] {
     cursor: pointer;
+
+    appearance: none;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    border: 3px solid #444;
+    transition: 0.12s all linear;
+    position: relative;
+    top: 3px;
+}
+
+input[type=radio]:checked {
+    border: 6px solid #55f;
 }
 
 input[type=checkbox] {
@@ -59,6 +95,58 @@ form.input {
     display: block;
 }
 
+table, tr {
+    border-top: 2px solid #444;
+    border-collapse: collapse;
+}
+
+table, tr:first-of-type {
+    border: none;
+}
+
+#poll_results tr {
+    border-top: none;
+}
+#poll_results .meter {
+    margin: .4em;
+}
+
 #error {
     color: #f55;
+}
+
+details {
+    padding: .5em;
+}
+
+summary {
+    font-weight: bold;
+}
+
+details[open] summary {
+    margin-bottom: .5em;
+}
+
+a {
+    color: inherit;
+    text-decoration: 2px solid underline #55f;
+}
+
+input:invalid {
+    border-color: #f55;
+}
+
+.meter {
+    height: 18px;
+    max-width: 250px;
+    min-width: 100px;
+    border-radius: 9px;
+    background-color: #444;
+}
+
+.meter-fill {
+    background-color: #55f;
+    color: #55f;
+    height: 18px;
+    border-radius: 9px;
 }

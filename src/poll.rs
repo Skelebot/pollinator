@@ -18,6 +18,15 @@ pub enum PositionalSystem {
     Score(u32),
 }
 
+impl std::fmt::Display for PositionalSystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Score(num) => f.write_fmt(format_args!("Score{}", num)),
+            _ => f.write_fmt(format_args!("{:?}", self))
+        }
+    }
+}
+
 impl PositionalSystem {
     pub fn try_parse(s: &str) -> Result<Self, ()> {
         if s.starts_with("Borda") {
@@ -39,6 +48,15 @@ pub enum PollType {
     Single,
     Multiple,
     Ranked(PositionalSystem),
+}
+
+impl std::fmt::Display for PollType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ranked(sys) => f.write_fmt(format_args!("Ranked{}", sys)),
+            _ => f.write_fmt(format_args!("{:?}", self))
+        }
+    }
 }
 
 impl PollType {
@@ -83,12 +101,6 @@ impl PollType {
         } else {
             false // doesn't matter
         }
-    }
-}
-
-impl std::fmt::Display for PollType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -151,5 +163,35 @@ impl Poll {
             poll_id: id,
         }
         .render()
+    }
+}
+
+pub trait PollFormat {
+    /// Variables:
+    fn create_site_add_option_script() -> Result<String, &'static str>;
+    fn voting_site(&self) -> Result<String, askama::Error>;
+    fn results_site(&self) -> Result<String, askama::Error>;
+    fn register_votes(&mut self, query: &str) -> Result<String, &'static str>;
+}
+
+pub struct SingleChoicePoll {
+    votes: Vec<u64>,
+}
+
+impl PollFormat for SingleChoicePoll {
+    fn create_site_add_option_script() -> Result<String, &'static str> {
+        todo!()
+    }
+
+    fn voting_site(&self) -> Result<String, askama::Error> {
+        todo!()
+    }
+
+    fn results_site(&self) -> Result<String, askama::Error> {
+        todo!()
+    }
+
+    fn register_votes(&mut self, query: &str) -> Result<String, &'static str> {
+        todo!()
     }
 }

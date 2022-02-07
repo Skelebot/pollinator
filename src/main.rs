@@ -4,9 +4,8 @@ use askama::Template;
 use poll::PollType;
 use serde::Deserialize;
 
-use actix_web::{
-    get, middleware, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer, Result,
-};
+use actix_web::{middleware, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer, Result};
+use templates::ReturnTemplate;
 
 mod poll;
 mod templates;
@@ -21,8 +20,20 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     log::info!("Polls started!");
 
+    let poll = poll::Poll {
+        name: "Test Poll".into(),
+        ptype: PollType::Single,
+        voters: 6,
+        options: vec![
+            ("Option A".into(), 3),
+            ("Option B".into(), 2),
+            ("Option C".into(), 1),
+            ("Option D".into(), 0),
+        ],
+    };
+
     let state = web::Data::new(AppState {
-        polls: Mutex::new(vec![]),
+        polls: Mutex::new(vec![poll]),
     });
 
     HttpServer::new(move || {
@@ -31,7 +42,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(state.clone())
             .configure(app_config)
     })
-    .bind("127.0.0.1:8080")?
+    .bind("0.0.0.0:8080")?
     .run()
     .await
 }
@@ -45,12 +56,20 @@ fn app_config(config: &mut web::ServiceConfig) {
         )
         .service(
             web::scope("")
-                .service(web::resource("/").to(index))
-                .service(handle_create)
-                .service(handle_create_desc)
-                .service(handle_vote)
-                .service(handle_vote_desc)
-                .service(handle_results),
+                .service(web::resource("/").name("index").to(index))
+                .service(web::resource("/create").to(handle_create))
+                .service(web::resource("/create/poll").to(handle_create_desc))
+                .service(
+                    web::resource("/vote/{poll_id}")
+                        .name("vote")
+                        .to(handle_vote),
+                )
+                .service(web::resource("/vote/{poll_id}/response").to(handle_vote_desc))
+                .service(
+                    web::resource("/results/{poll_id}")
+                        .name("results")
+                        .to(handle_results),
+                ),
         );
 }
 
@@ -65,14 +84,9 @@ struct CreateParams {
     poll_type: Option<String>,
 }
 
-#[get("/create")]
 async fn handle_create(web::Query(params): web::Query<CreateParams>) -> Result<HttpResponse> {
     if let Some(ptype) = params.poll_type {
-        let poll_type = PollType::try_parse(&ptype).map_err(|_| {
-            HttpResponse::BadRequest()
-                .content_type("text/plain")
-                .body("Invalid poll type")
-        })?;
+        let poll_type = PollType::try_parse(&ptype).map_err(|_| HttpResponse::BadRequest())?;
         let content = templates::CreateTemplate { poll_type }
             .render()
             .map_err(|_| HttpResponse::InternalServerError())?;
@@ -94,8 +108,8 @@ struct PollDesc {
     options: String,
 }
 
-#[get("/create/poll")]
 async fn handle_create_desc(
+    req: HttpRequest,
     state: web::Data<AppState>,
     web::Query(desc): web::Query<PollDesc>,
 ) -> Result<HttpResponse> {
@@ -110,13 +124,31 @@ async fn handle_create_desc(
     let mut polls = state.polls.lock().unwrap();
     polls.push(poll);
 
+    let poll_id = polls.len() - 1;
+    let poll_id_str = poll_id.to_string();
+    let body = ReturnTemplate {
+        heading: &format!("Poll created: {}", polls.last().unwrap().name),
+        links: &[
+            (
+                "Voting link",
+                req.url_for("vote", &[&poll_id_str]).unwrap().as_str(),
+            ),
+            (
+                "Results link",
+                req.url_for("results", &[&poll_id_str]).unwrap().as_str(),
+            ),
+        ],
+    }
+    .render()
+    .map_err(|_| HttpResponse::InternalServerError())?;
+
     Ok(HttpResponse::Ok()
-        .content_type("text/plain; charset=utf-8")
-        .body(&format!("poll num: {}", polls.len() - 1)))
+        .content_type("text/html; charset=utf-8")
+        .body(body))
 }
 
-#[get("/vote/{poll_id}")]
 async fn handle_vote(
+    req: HttpRequest,
     state: web::Data<AppState>,
     web::Path(poll_id): web::Path<String>,
 ) -> Result<HttpResponse> {
@@ -130,13 +162,12 @@ async fn handle_vote(
         let content = poll
             .vote_template(idx)
             .map_err(|_| HttpResponse::InternalServerError())?;
+
         Ok(HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")
             .body(content))
     } else {
-        Ok(HttpResponse::BadRequest()
-            .content_type("text/plain; charset=utf-8")
-            .body(&format!("poll num {} does not exist", idx)))
+        bad_poll_id_page(req, idx)
     }
 }
 
@@ -177,7 +208,6 @@ impl VoteResponseDesc {
     }
 }
 
-#[get("/vote/{poll_id}/response")]
 async fn handle_vote_desc(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -218,26 +248,35 @@ async fn handle_vote_desc(
                         .ok_or_else(HttpResponse::BadRequest)?;
                     let max = desc.0.len();
                     match system {
-                        poll::PositionalSystem::Borda => opt.1 += (max - (option+1)) as u64,
+                        poll::PositionalSystem::Borda => opt.1 += (max - (option + 1)) as u64,
                         poll::PositionalSystem::Dowdall => todo!(),
                         poll::PositionalSystem::Score(_) => todo!(),
                     }
                 }
             }
         }
+        let body = ReturnTemplate {
+            heading: "Voted.",
+            links: &[(
+                "See results",
+                req.url_for("results", &[poll_id.to_string()])
+                    .unwrap()
+                    .as_str(),
+            )],
+        }
+        .render()
+        .map_err(|_| HttpResponse::InternalServerError())?;
 
         Ok(HttpResponse::Ok()
-            .content_type("text/plain; charset=utf-8")
-            .body("Voted."))
+            .content_type("text/html; charset=utf-8")
+            .body(body))
     } else {
-        Ok(HttpResponse::BadRequest()
-            .content_type("text/plain; charset=utf-8")
-            .body(&format!("poll num {} does not exist", poll_id)))
+        bad_poll_id_page(req, poll_id)
     }
 }
 
-#[get("/results/{poll_id}")]
 async fn handle_results(
+    req: HttpRequest,
     state: web::Data<AppState>,
     web::Path(poll_id): web::Path<String>,
 ) -> Result<HttpResponse> {
@@ -255,8 +294,19 @@ async fn handle_results(
             .content_type("text/html; charset=utf-8")
             .body(content))
     } else {
-        Ok(HttpResponse::BadRequest()
-            .content_type("text/plain; charset=utf-8")
-            .body(&format!("poll num {} does not exist", idx)))
+        bad_poll_id_page(req, idx)
     }
+}
+
+fn bad_poll_id_page(req: HttpRequest, idx: usize) -> Result<HttpResponse> {
+    let body = ReturnTemplate {
+        heading: &format!("Poll id {} does not exist", idx),
+        links: &[("Go home", req.url_for_static("index").unwrap().as_str())],
+    }
+    .render()
+    .map_err(|_| HttpResponse::InternalServerError())?;
+
+    Ok(HttpResponse::BadRequest()
+        .content_type("text/html; charset=utf-8")
+        .body(body))
 }

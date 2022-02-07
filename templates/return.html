@@ -1,0 +1,11 @@
+{% extends "base.html" %} {% block title %}{{heading}}{% endblock %} {% block body %}
+
+<h2>{{ heading }}</h2>
+
+{% for (link_name, link) in links %}
+<p>
+    {{ link_name }}: <a href="{{ link }}">{{ link }}</a>
+</p>
+{% endfor %}
+
+{% endblock %}

@@ -6,30 +6,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="author" content="Antoni Simka">
     <link rel="stylesheet" type="text/css" href="/static/poll.css">
-    <title>Simple poll website</title>
+    <title>Poll-inator 3000</title>
 </head>
 
 <body>
+    <header>
+        <h2>Poll-inator 3000</h2>
+        <p>A simple poll creation / voting website.</p>
+    </header>
     <h3>Links</h3>
     <ul>
         <li><a href="create">Create a poll</a></li>
     </ul>
     <h3>Query poll</h3>
-    <form>
-        <label for="poll_num">Poll number: </label>
+    <form id="form">
+        <label for="poll_num">Poll number: </label><br>
         <input type="number" id="poll_num" name="poll_num">
-        <br/>
-        <button id="vote" type="button">Vote</button>
-        <button id="see_results" type="button">See results</button>
+        <button id="vote" type="submit">Vote</button>
+        <button id="see_results" type="submit">See results</button>
     </form>
     <script>
-        document.getElementById("vote").onclick = function() {
-            let num = document.getElementById("poll_num").value;
-            window.location.assign("/vote/" + num)
+        let form = document.getElementById("form");
+        let num = document.getElementById("poll_num");
+        document.getElementById("vote").onclick = function (ev) {
+            if (!form.reportValidity()) {
+                return false;
+            }
+            ev.preventDefault();
+            window.location.assign("/vote/" + num.value)
         };
-        document.getElementById("see_results").onclick = function() {
-            let num = document.getElementById("poll_num").value;
-            window.location.assign("/results/" + num)
+        document.getElementById("see_results").onclick = function (ev) {
+            if (!form.reportValidity()) {
+                return false;
+            }
+            ev.preventDefault();
+            window.location.assign("/results/" + num.value)
         };
     </script>
 </body>

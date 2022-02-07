@@ -32,3 +32,10 @@ pub struct ResultsTemplate<'a> {
 pub struct CreateTemplate {
     pub poll_type: PollType,
 }
+
+#[derive(Template)]
+#[template(path = "return.html")]
+pub struct ReturnTemplate<'a> {
+    pub heading: &'a str,
+    pub links: &'a [(&'a str, &'a str)],
+}
