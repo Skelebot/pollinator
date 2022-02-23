@@ -1,5 +1,10 @@
-CREATE TABLE polls {
-    name TEXT,
-    type TEXT,
-    date_created TEXT,
-}
+CREATE TABLE polls (
+    id INTEGER PRIMARY KEY,
+    randpart INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    date_created TEXT NOT NULL,
+    admin_link TEXT NOT NULL,
+    voters INTEGER NOT NULL,
+    format_data BLOB NOT NULL
+);

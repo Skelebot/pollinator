@@ -1,6 +1,6 @@
 <table>
     <tr>
-        {%- for (name, _) in options -%}
+        {%- for name in options -%}
         <th>{{ loop.index }}</th>
         {%- endfor -%}
         {%- if can_unranked -%}
@@ -8,10 +8,10 @@
         {%- endif -%}
     </tr>
 
-    {%- for (name, _) in options -%}
+    {%- for name in options -%}
     {%- let outer = loop.index0 -%}
     <tr>
-        {%- for (name, _) in options %}
+        {%- for name in options %}
         <td>
             <input type="{{ input_type }}" id="{{outer}}_{{loop.index0}}" value="{{ loop.index0 }}" name="{{ outer }}"
                 {%- if !can_unranked && loop.index0==outer %} checked {% endif %}/>

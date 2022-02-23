@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Voting on poll : {{ poll.name }}{% endblock %}
+
+{%- block body -%}
+
+<h2>Voting on poll: {{ poll.name }}</h2>
+
+<form action="/vote/{{ poll.id }}/response">
+    <fieldset>
+        <legend>{{ poll.name }}</legend>
+
+        {%- for (name, num) in options -%}
+        <div class="poll_option">
+
+            {%- if multiple -%}
+                <input type="checkbox" id="option_box" value="{{ loop.index0 }}" name="response" />
+            {%- else -%}
+                <input type="radio" id="option_box" value="{{ loop.index0 }}" name="response" {%- if loop.first %} checked
+                    {%- endif %} />
+            {%- endif -%}
+
+            <label for="opt{{- loop.index0 }}">{{ name }}</label>
+        </div>
+        {%- endfor -%}
+
+        <button type="submit">Submit</button>
+    </fieldset>
+</form>
+
+{%- endblock %}

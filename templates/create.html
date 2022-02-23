@@ -67,7 +67,7 @@
         }
         let name = document.getElementById("poll_name_preview").innerHTML;
 
-        let request = `/create/poll?ptype={{ poll_type }}&name=${name}&options=${options_list.join(',')}`;
+        let request = `/create/poll?type={{ poll_type }}&name=${name}&options=${options_list.join(',')}`;
         window.location.assign(request);
         event.preventDefault();
     }

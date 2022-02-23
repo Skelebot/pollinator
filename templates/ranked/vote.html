@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Voting on poll : {{ poll.name }}{% endblock %}
+
+{%- block body -%}
+
+<h2>Voting on poll: {{ poll.name }}</h2>
+
+<form action="/vote/{{ poll.id }}/response">
+    <fieldset>
+    <legend>{{ poll.name }}</legend>
+
+        {%- let max = options.len() -%}
+
+        {%- let input_type = "radio" -%}
+        {%- include "vote_table.html" %}
+
+        <button type="submit">Submit</button>
+    </fieldset>
+</form>
+
+{%- if unique_scores %}
+    <script>
+        let can_unranked = {{ can_unranked }};
+        let max = {{ max }};
+        let x_max = max;
+        if (can_unranked) { x_max += 1; }
+        {%- include "unique_scores.js" %}
+    </script>
+{%- endif -%}
+
+{%- endblock %}

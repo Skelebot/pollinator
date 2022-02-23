@@ -20,8 +20,8 @@
     </ul>
     <h3>Query poll</h3>
     <form id="form">
-        <label for="poll_num">Poll number: </label><br>
-        <input type="number" id="poll_num" name="poll_num">
+        <label for="poll_num">Poll ID: </label><br>
+        <input id="poll_num" name="poll_num" pattern="[A-Za-z0-9-_]+\+[A-Za-z0-9-_]{11}">
         <button id="vote" type="submit">Vote</button>
         <button id="see_results" type="submit">See results</button>
     </form>

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Voting on poll {{ poll.id }}{% endblock %}
+{% block body %}
+
+<h2>Poll: {{ poll.name }}</h2>
+
+<legend>{{ poll.name }}</legend>
+<div id="poll_results">
+
+    {% let (_, max) = options_sorted[0] %}
+
+    <table>
+        {% for (name, num) in options_sorted %}
+        {%- let percent %}
+        {%- if poll.voters == 0 %}
+        {%- let percent = 0.0 %}
+        {%- else %}
+        {%- let percent = (num.clone()|into_f64 / poll.voters|into_f64) * 100.0 %}
+        {%- endif %}
+        <tr class="result_entry">
+            <td><label for="opt{{ loop.index0 }}">{{ name }}</label></td>
+            <td><div id="opt{{ loop.index0 }}" class="meter" role="meter" aria-valuenow="{{ num }}" aria-valuemin="0" aria-valuemax="{{ max }}" aria-label="vote number">
+                <svg width="{{ percent }}%" class="meter-fill" aria-hidden="true" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="0" y="0" width="100%" height="100%" fill="currentColor"></rect>
+                  </svg>
+            </div></td>
+            <td><span id="result_numbers">{{ num }} votes ({{ "{:.2}"|format(percent) }})%</span></td>
+        </tr>
+        {% endfor %}
+    </table>
+    <p id="voters_count">Voters total: {{ poll.voters }}</p>
+
+</div>
+</form>
+
+{% endblock %}
