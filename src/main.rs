@@ -21,12 +21,13 @@ mod util;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
     std::env::set_var("RUST_LOG", "actix_web=info,polls=info");
     env_logger::init();
     log::info!("Polls started!");
 
     // SQLite database connection
-    let manager = SqliteConnectionManager::file("db/main.db");
+    let manager = SqliteConnectionManager::file(args[1].as_str());
     let pool = db::DbPool::new(manager).unwrap();
 
     let limits = web::Data::new(rate::LimitStore::default());
