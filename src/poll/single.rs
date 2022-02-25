@@ -1,3 +1,4 @@
+use anyhow::Context;
 use askama::Template;
 use bincode::{Decode, Encode};
 
@@ -11,13 +12,13 @@ pub struct SingleChoicePoll {
 }
 
 impl PollFormat for SingleChoicePoll {
-    fn from_query(query: &QString) -> Result<Box<Self>, &'static str>
+    fn from_query(query: &QString) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized,
     {
         let options_string = query
             .get("options")
-            .ok_or("'options' query element not found")?;
+            .context("'options' query element not found")?;
         let options = options_string
             .split(',')
             .map(|s| (s.to_string(), 0u64))
@@ -25,7 +26,7 @@ impl PollFormat for SingleChoicePoll {
         Ok(Box::new(SingleChoicePoll { options }))
     }
 
-    fn create_site_add_option_script() -> Result<String, &'static str>
+    fn create_site_add_option_script() -> Result<String, anyhow::Error>
     where
         Self: Sized,
     {
@@ -60,42 +61,32 @@ impl PollFormat for SingleChoicePoll {
         .render()
     }
 
-    fn register_votes(&mut self, query: &QString) -> Result<(), &'static str> {
+    fn register_votes(&mut self, query: &QString) -> Result<(), anyhow::Error> {
         let resp = query
             .get("response")
-            .ok_or("'response' query element not found")?;
-        let opt: usize = resp.parse().map_err(|_| "'response' must be a number")?;
+            .context("'response' query element not found")?;
+        let opt: usize = resp.parse().context("'response' must be a number")?;
         self.options
             .get_mut(opt)
-            .ok_or("'response' is outside of the range of options")?
+            .context("'response' is outside of the range of options")?
             .1 += 1;
         Ok(())
     }
 
-    fn save_state(&self) -> Vec<u8> {
-        // TODO: handle errors differently
-        match bincode::encode_to_vec(self, bincode::config::standard()) {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("Error while saving state for poll: {}", e);
-                Vec::new()
-            }
-        }
+    fn save_state(&self) -> Result<Vec<u8>, anyhow::Error> {
+        bincode::encode_to_vec(self, bincode::config::standard()).context("Failed to encode state")
     }
 
-    fn from_bytes(bytes: Vec<u8>) -> Box<Self>
+    fn from_bytes(bytes: Vec<u8>) -> Result<Box<dyn PollFormat>, anyhow::Error>
     where
         Self: Sized,
     {
-        // TODO: handle errors differently
-        match bincode::decode_from_slice(&bytes, bincode::config::standard()) {
-            Ok((s, _)) => Box::new(s),
-            Err(e) => {
-                log::error!("Error while reading poll format data: {}", e);
-                Box::new(Self {
-                    options: Vec::new(),
-                })
-            }
-        }
+        let (dec, _): (Self, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())
+            .context("Failed to decode state")?;
+        Ok(Box::new(dec))
+    }
+
+    fn reset(&mut self) {
+        self.options.iter_mut().for_each(|(_, c)| *c = 0);
     }
 }

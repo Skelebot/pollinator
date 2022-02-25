@@ -2,8 +2,7 @@ use std::net::IpAddr;
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
-use actix_web::dev::ServiceRequest;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -51,6 +50,12 @@ impl LimitStore {
             .retain(|_, v| now - *v <= Self::VOTE_LIMIT);
     }
 
+    /// Resets all limits
+    pub fn reset(&self) {
+        self.create.lock().unwrap().clear();
+        self.vote.lock().unwrap().clear();
+    }
+
     // Returns true if the address should be rate-limited;
     // inserts it otherwise
     pub fn check_create(&self, addr: IpAddr) -> bool {
@@ -88,50 +93,40 @@ impl LimitStore {
     }
 }
 
-pub fn limit_create(req: &ServiceRequest) -> Result<(), actix_web::HttpResponse> {
+/// Checks whether a request's address should be rate-limited
+pub fn limit_create(req: &HttpRequest) -> bool {
     // todo: rate limit only if address.is_global()
     let addr = req.peer_addr();
     let addr = if let Some(addr) = addr {
         addr.ip()
     } else {
-        return Ok(());
+        // TODO: error?
+        return false;
     };
     if addr.is_loopback() {
-        return Ok(());
+        return false;
     }
     let store = &req.app_data::<web::Data<LimitStore>>().unwrap();
 
-    if store.check_create(addr) {
-        Err(HttpResponse::TooManyRequests()
-            .content_type("text/html; charset=utf-8")
-            .body(include_str!("../static/limit.html")))
-    } else {
-        Ok(())
-    }
+    store.check_create(addr)
 }
 
-pub fn limit_vote(req: &ServiceRequest) -> Result<(), actix_web::HttpResponse> {
-    let poll_id = req.match_info().query("poll_id");
-    let id = PollID::try_from(poll_id).map_err(|_| crate::bad_poll_id_page(poll_id))?;
-
+/// Checks whether a request's address should be rate-limited
+/// PollID must be valid.
+pub fn limit_vote(req: &HttpRequest, poll_id: PollID) -> bool {
     // todo: rate limit only if address.is_global()
     let addr = req.peer_addr();
     let addr = if let Some(addr) = addr {
         addr.ip()
     } else {
-        return Ok(());
+        // TODO: error?
+        return false;
     };
     if addr.is_loopback() {
-        return Ok(());
+        return false;
     }
 
     let store = &req.app_data::<web::Data<LimitStore>>().unwrap();
 
-    if store.check_vote(addr, id) {
-        Err(HttpResponse::TooManyRequests()
-            .content_type("text/html; charset=utf-8")
-            .body(include_str!("../static/limit.html")))
-    } else {
-        Ok(())
-    }
+    store.check_vote(addr, poll_id)
 }

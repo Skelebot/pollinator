@@ -1,4 +1,4 @@
-use actix_web::HttpResponse;
+use crate::error::{ParseError, UserError};
 use qstring::QString;
 use rand::Rng;
 use serde::Deserialize;
@@ -12,6 +12,8 @@ pub use borda::*;
 mod dowdall;
 pub use dowdall::*;
 
+use crate::util;
+
 pub struct Poll {
     pub data: PollData,
     pub format: Box<dyn PollFormat>,
@@ -19,8 +21,13 @@ pub struct Poll {
 
 #[derive(Deserialize, Debug, Clone, Copy)]
 pub enum PollType {
+    /// Simple single-choice poll
     Single,
+    /// Simple multiple-choice poll
     Multiple,
+    /// Ranked-choice poll - each voter assigns a number of points to each option
+    /// the positional system determines the rules of assigning points and ranking
+    /// options based on their points.
     Ranked(PositionalSystem),
 }
 
@@ -34,16 +41,18 @@ impl std::fmt::Display for PollType {
 }
 
 impl PollType {
-    pub fn try_parse(s: &str) -> Result<Self, ()> {
+    pub fn try_parse(s: &str) -> Result<Self, ParseError> {
         match s {
             "Single" => Ok(PollType::Single),
             "Multiple" => Ok(PollType::Multiple),
             s if s.starts_with("Ranked") => {
-                let desc = s.get(6..).ok_or(())?;
+                let desc = s
+                    .get(6..)
+                    .ok_or_else(|| ParseError::TypeIncomplete(s.to_string(), 6))?;
                 let pos_system = PositionalSystem::try_parse(desc)?;
                 Ok(PollType::Ranked(pos_system))
             }
-            _ => Err(()),
+            _ => Err(ParseError::InvalidPollType(s.into())),
         }
     }
 }
@@ -73,16 +82,18 @@ impl std::fmt::Display for PositionalSystem {
 }
 
 impl PositionalSystem {
-    pub fn try_parse(s: &str) -> Result<Self, ()> {
+    pub fn try_parse(s: &str) -> Result<Self, ParseError> {
         match s {
             "Borda" => Ok(PositionalSystem::Borda),
             "Dowdall" => Ok(PositionalSystem::Dowdall),
             s if s.starts_with("Score") => {
-                let desc = s.get(5..).ok_or(())?;
-                let num = desc.parse().map_err(|_| ())?;
+                let desc = s
+                    .get(5..)
+                    .ok_or_else(|| ParseError::TypeIncomplete(s.to_string(), 5))?;
+                let num = desc.parse().map_err(ParseError::InvalidNumber)?;
                 Ok(PositionalSystem::Score(num))
             }
-            _ => Err(()),
+            _ => Err(ParseError::InvalidPositionalSystem(s.into())),
         }
     }
 }
@@ -108,20 +119,20 @@ impl PollID {
 
 impl std::fmt::Display for PollID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let id_encoded = crate::util::encode_base64_u64(self.0);
-        let randpart_encoded = crate::util::encode_base64_u64(self.1);
+        let id_encoded = util::encode_base64_u64(self.0);
+        let randpart_encoded = util::encode_base64_u64(self.1);
         f.write_fmt(format_args!("{}+{}", id_encoded, randpart_encoded))
     }
 }
 
 impl TryFrom<&str> for PollID {
-    type Error = ();
+    type Error = ParseError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let sep = value.find('+').ok_or(())?;
+        let sep = value.find('+').ok_or(ParseError::PlusNotFound)?;
 
-        let id = crate::util::read_base64_u64(&value[..sep])?;
-        let randpart = crate::util::read_base64_u64(&value[sep + 1..])?;
+        let id = util::read_base64_u64(&value[..sep])?;
+        let randpart = util::read_base64_u64(&value[sep + 1..])?;
 
         Ok(PollID(id, randpart))
     }
@@ -140,58 +151,54 @@ pub struct PollData {
 
 pub trait PollFormat: Send + Sync + 'static {
     /// Variables:
-    fn create_site_add_option_script() -> Result<String, &'static str>
+    fn create_site_add_option_script() -> Result<String, anyhow::Error>
     where
         Self: Sized;
 
-    fn from_query(query: &QString) -> Result<Box<Self>, &'static str>
+    fn from_query(query: &QString) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized;
 
     fn voting_site(&self, data: &PollData) -> Result<String, askama::Error>;
     fn results_site(&self, data: &PollData) -> Result<String, askama::Error>;
-    fn register_votes(&mut self, query: &QString) -> Result<(), &'static str>;
+    fn register_votes(&mut self, query: &QString) -> Result<(), anyhow::Error>;
 
-    fn save_state(&self) -> Vec<u8>;
-    fn from_bytes(bytes: Vec<u8>) -> Box<Self>
+    fn save_state(&self) -> Result<Vec<u8>, anyhow::Error>;
+    fn from_bytes(bytes: Vec<u8>) -> Result<Box<dyn PollFormat>, anyhow::Error>
     where
         Self: Sized;
+    fn reset(&mut self);
 }
 
 pub fn create_poll_format_from_query(
     ptype: PollType,
     query: &QString,
-) -> Result<Box<dyn PollFormat>, actix_web::HttpResponse> {
-    match ptype {
-        PollType::Single => Ok(SingleChoicePoll::from_query(query).map_err(|e| {
-            HttpResponse::BadRequest()
-                .content_type("text/plain; charset=utf-8")
-                .body(e)
-        })?),
-        PollType::Multiple => Ok(MultipleChoicePoll::from_query(query).map_err(|e| {
-            HttpResponse::BadRequest()
-                .content_type("text/plain; charset=utf-8")
-                .body(e)
-        })?),
+) -> Result<Box<dyn PollFormat>, UserError> {
+    Ok(match ptype {
+        PollType::Single => SingleChoicePoll::from_query(query).map_err(UserError::PollCreation)?,
+        PollType::Multiple => {
+            MultipleChoicePoll::from_query(query).map_err(UserError::PollCreation)?
+        }
         PollType::Ranked(sys) => match sys {
-            PositionalSystem::Borda => Ok(BordaPoll::from_query(query).map_err(|e| {
-                HttpResponse::BadRequest()
-                    .content_type("text/plain; charset=utf-8")
-                    .body(e)
-            })?),
-            PositionalSystem::Dowdall => Ok(DowdallPoll::from_query(query).map_err(|e| {
-                HttpResponse::BadRequest()
-                    .content_type("text/plain; charset=utf-8")
-                    .body(e)
-            })?),
+            PositionalSystem::Borda => {
+                BordaPoll::from_query(query).map_err(UserError::PollCreation)?
+            }
+            PositionalSystem::Dowdall => {
+                DowdallPoll::from_query(query).map_err(UserError::PollCreation)?
+            }
             PositionalSystem::Score(_) => {
-                Err(HttpResponse::NotImplemented().body("Not yet implemented."))
+                return Err(UserError::PollCreation(anyhow::anyhow!(
+                    "Not yet implemented"
+                )));
             }
         },
-    }
+    })
 }
 
-pub fn create_poll_format_from_bytes(ptype: PollType, data: Vec<u8>) -> Box<dyn PollFormat> {
+pub fn create_poll_format_from_bytes(
+    ptype: PollType,
+    data: Vec<u8>,
+) -> Result<Box<dyn PollFormat>, anyhow::Error> {
     match ptype {
         PollType::Single => SingleChoicePoll::from_bytes(data),
         PollType::Multiple => MultipleChoicePoll::from_bytes(data),

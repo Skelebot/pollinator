@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Antoni Simka">
+    <link rel="stylesheet" type="text/css" href="/static/poll.css">
+    <title>Admin page</title>
+</head>
+
+<body>
+    <header>
+        <h2>Poll-inator 3000 admin page</h2>
+        <p>With great power comes great responsibility.</p>
+    </header>
+    <form id="form" method="post">
+        
+        <fieldset>
+            <legend>Admin action</legend>
+            <div class="poll_option">
+                <input type="radio" id="option_box" value="PurgeDatabase" name="action" checked/>
+                <label for="PurgeDatabase">Purge database</label>
+            </div>
+            <div class="poll_option">
+                <input type="radio" id="option_box" value="ResetLimits" name="action"/>
+                <label for="ResetLimits">Reset rate limits</label>
+            </div>
+            <br>
+            <div class="poll_option">
+                <label for="token">Admin token: </label>
+                <input id="token" name="token" pattern="[A-Za-z0-9]{11}">
+            </div>
+            <button type="submit">Execute</button>
+        </fieldset>
+
+    </form>
+</body>
+
+</html>

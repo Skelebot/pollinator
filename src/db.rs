@@ -1,26 +1,50 @@
+use thiserror::Error;
+
 use crate::poll::{create_poll_format_from_bytes, Poll, PollData, PollID, PollType};
 
 pub type DbPool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
-pub type _DbConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("Internal error (database)")]
     Internal,
+    #[error("No such poll")]
     NoSuchPoll,
+    #[error("Database error: {0:?}")]
+    Database(rusqlite::Error),
+    #[error("Database query error: {0:?}")]
+    Query(rusqlite::Error),
+    #[error("Database insert error: {0:?}")]
+    Insert(rusqlite::Error),
+    #[error("Database connection error: {0:?}")]
+    Connection(r2d2::Error),
+    #[error("Failed serializing poll data: {0:?}")]
+    SerializationError(anyhow::Error),
 }
 
+impl actix_web::error::ResponseError for Error {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match *self {
+            Error::NoSuchPoll => actix_web::http::StatusCode::BAD_REQUEST,
+            _ => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+/// Retrieves a single poll using it's unique id from the database
 pub async fn get_poll(pool: &DbPool, id: PollID) -> Result<Poll, Error> {
-    let pool = pool.clone();
-    let conn = actix_web::web::block(move || pool.get())
-        .await
-        .map_err(|_| Error::Internal)?;
+    let conn = pool.get().map_err(Error::Connection)?;
 
     let mut query = conn
         .prepare("SELECT * FROM polls where id = ?1")
-        .map_err(|_| Error::Internal)?;
+        .map_err(Error::Query)?;
 
+    // TODO: Use column indices instead of names and check map_err-s
     let mut poll_iter = query
         .query_map([id.index()], |row| {
-            let ptype = PollType::try_parse(&row.get::<_, String>("type")?).unwrap();
+            use rusqlite::types::Type;
+            let ptype = PollType::try_parse(&row.get::<_, String>("type")?)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, Type::Text, e.into()))?;
             Ok(Poll {
                 data: PollData {
                     id,
@@ -29,23 +53,26 @@ pub async fn get_poll(pool: &DbPool, id: PollID) -> Result<Poll, Error> {
                     date_created: chrono::DateTime::parse_from_rfc3339(
                         &row.get::<_, String>("date_created")?,
                     )
-                    .unwrap()
+                    .map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(3, Type::Text, e.into())
+                    })?
                     .into(),
                     admin_link: row.get("admin_link")?,
                     voters: row.get("voters")?,
                 },
-                format: create_poll_format_from_bytes(ptype, row.get("format_data")?),
+                format: create_poll_format_from_bytes(ptype, row.get("format_data")?).map_err(
+                    |e| rusqlite::Error::FromSqlConversionFailure(7, Type::Blob, e.into()),
+                )?,
             })
         })
-        .map_err(|e| {
-            log::error!("Error while retrieving poll: {:?}", e);
-            Error::Internal
-        })?;
+        .map_err(Error::Query)?;
 
-    let poll = poll_iter.next().ok_or(Error::NoSuchPoll)?.map_err(|e| {
-        log::error!("Error while retrieving poll: {:?}", e);
-        Error::Internal
-    })?;
+    let poll = poll_iter
+        .next()
+        .ok_or(Error::NoSuchPoll)?
+        .map_err(Error::Database)?;
+
+    // Verify the randpart
     if poll.data.id.randpart() != id.randpart() {
         return Err(Error::NoSuchPoll);
     }
@@ -53,63 +80,85 @@ pub async fn get_poll(pool: &DbPool, id: PollID) -> Result<Poll, Error> {
     Ok(poll)
 }
 
-pub async fn last_id(pool: &DbPool) -> Result<i64, Error> {
-    let pool = pool.clone();
-    let conn = actix_web::web::block(move || pool.get())
-        .await
-        .map_err(|_| Error::Internal)?;
-    Ok(conn.last_insert_rowid())
+/// Retrieves the last ID assigned to a poll in the database
+/// Note: This does not find the last PollID (with random part) only the raw ID part
+pub async fn last_id(pool: &DbPool) -> Result<usize, Error> {
+    let conn = pool.get().map_err(Error::Connection)?;
+    let mut query = conn
+        .prepare("SELECT MAX(id) FROM polls")
+        .map_err(Error::Query)?;
+
+    let mut i = query
+        // If there are no rows, this returns InvalidColumnType, so assume 0
+        .query_map([], |row| Ok(row.get(0).unwrap_or(0)))
+        .map_err(Error::Database)?;
+    // This error (Internal) shouldn't ever happen, but better be safe
+    let id = i.next().ok_or(Error::Internal)?.map_err(Error::Database)?;
+    Ok(id)
 }
 
+/// Inserts a poll into the database
 pub async fn insert_poll(pool: &DbPool, poll: Poll) -> Result<(), Error> {
-    let pool = pool.clone();
-    let conn = actix_web::web::block(move || pool.get())
-        .await
-        .map_err(|_| Error::Internal)?;
+    let conn = pool.get().map_err(Error::Connection)?;
 
     let params = rusqlite::params![
-        poll.data.id.randpart() as i64, // BUG: If randpart is > 2^63 this fails with ToSqlConversionFailure(TryFromIntError(())); convert to i64 to avoid this
+        // If randpart is > 2^63 this fails; convert to i64 to avoid this
+        poll.data.id.randpart() as i64,
         poll.data.ptype.to_string(),
         poll.data.name,
         poll.data.date_created.to_rfc3339(),
         poll.data.admin_link,
         poll.data.voters,
-        poll.format.save_state(),
+        poll.format
+            .save_state()
+            .map_err(Error::SerializationError)?,
     ];
 
     conn
         .execute("INSERT INTO polls (randpart, type, name, date_created, admin_link, voters, format_data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     params)
-        .map_err(|e| {
-            log::error!("Error when inserting poll: {:?}", e);
-            log::error!("params: {:?}", (
-                poll.data.id.randpart(),
-                poll.data.ptype.to_string(),
-                poll.data.name,
-                poll.data.date_created.to_rfc3339(),
-                poll.data.admin_link,
-                poll.data.voters,
-            ));
-            Error::Internal
-        })?;
+        .map_err(Error::Insert)?;
 
     Ok(())
 }
 
-/// increments the number of voters and updates the format data
-pub async fn update_poll(pool: &DbPool, poll: &Poll) -> Result<(), Error> {
-    let pool = pool.clone();
-    let conn = actix_web::web::block(move || pool.get())
-        .await
-        .map_err(|_| Error::Internal)?;
+/// Sets the number of voters and updates the format data
+/// Returns true if a poll was updated
+pub async fn update_poll(pool: &DbPool, poll: &Poll) -> Result<bool, Error> {
+    let conn = pool.get().map_err(Error::Connection)?;
 
-    let params = rusqlite::params![poll.data.id.index(), poll.format.save_state(),];
+    let params = rusqlite::params![
+        poll.data.id.index(),
+        poll.data.voters,
+        poll.format
+            .save_state()
+            .map_err(Error::SerializationError)?,
+    ];
 
     conn.execute(
-        "UPDATE polls SET voters = voters + 1, format_data = ?2 WHERE id = ?1",
+        "UPDATE polls SET voters = ?2, format_data = ?3 WHERE id = ?1",
         params,
     )
-    .map_err(|_| Error::Internal)?;
+    .map_err(Error::Query)
+    // Safety: id is unique, so the number of rows updated is always 0 or 1
+    .map(|u| u == 1)
+}
 
-    Ok(())
+/// Completely clears the polls table,
+/// returns number of deleted rows
+pub async fn purge(pool: &DbPool) -> Result<usize, Error> {
+    pool.get()
+        .map_err(Error::Connection)?
+        .execute("DELETE FROM polls WHERE id IS NOT NULL", [])
+        .map_err(Error::Query)
+}
+
+/// Deletes a poll, returns true if a poll was deleted
+pub async fn delete_poll(pool: &DbPool, id: PollID) -> Result<bool, Error> {
+    pool.get()
+        .map_err(Error::Connection)?
+        .execute("DELETE FROM polls WHERE id = ?1", [id.index()])
+        .map_err(Error::Query)
+        // Safety: id is unique, so the number of rows updated is always 0 or 1
+        .map(|u| u == 1)
 }
