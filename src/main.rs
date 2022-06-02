@@ -8,24 +8,18 @@ use serde::Deserialize;
 
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Result};
 use anyhow::{bail, Context};
-use templates::ReturnTemplate;
 
 mod db;
 mod error;
 use error::*;
+
+use crate::templates::{PollCreatedTemplate, VotedTemplate};
 mod poll;
 mod rate;
 mod templates;
+#[macro_use]
 mod util;
-
-// TODO: Move somewhere
-macro_rules! return_html {
-    ($html:expr) => {
-        Ok(HttpResponse::Ok()
-            .content_type("text/html; charset=utf-8")
-            .body($html))
-    };
-}
+//use util::return_html;
 
 // TODO: Environmental var instead
 const GENERAL_ADMIN_TOKEN: &str = "szSnAkFwtQH";
@@ -95,7 +89,11 @@ fn app_config(config: &mut web::ServiceConfig) {
                 // Allow only urls with queries shorter than 560 characters
                 // TODO: Review the limit
                 .guard(actix_web::guard::fn_guard(|req| {
-                    req.uri.query().map(|p| p.len() < 560).unwrap_or(true)
+                    req.head()
+                        .uri
+                        .query()
+                        .map(|p| p.len() < 560)
+                        .unwrap_or(true)
                 }))
                 .service(web::resource("/").name("index").to(index))
                 // Poll creation screen
@@ -125,6 +123,7 @@ fn app_config(config: &mut web::ServiceConfig) {
                 // Poll management callback
                 .service(
                     web::resource("/admin/{poll_id}")
+                        .name("admin")
                         .route(web::get().to(handle_poll_admin))
                         .route(web::post().to(handle_poll_admin_action)),
                 )
@@ -153,7 +152,6 @@ async fn handle_default() -> Result<HttpResponse> {
 async fn handle_create(req: HttpRequest) -> Result<HttpResponse> {
     let query = QString::from(req.query_string());
 
-    // TODO: choose between poll_type and ptype names for poll type param
     // If there is a poll type specified
     if let Some(ptype) = query.get("poll_type") {
         let poll_type = PollType::try_parse(ptype)?;
@@ -210,19 +208,12 @@ async fn handle_create_desc(req: HttpRequest, db: web::Data<DbPool>) -> Result<H
     log::info!("Inserting poll id: {} to database...", id);
     db::insert_poll(&db, poll).await?;
 
-    let content = ReturnTemplate {
-        heading: &format!("Poll created: {}", name),
-        links: &[
-            (
-                "Voting link",
-                req.url_for("vote", &[&id.to_string()]).unwrap().as_str(),
-            ),
-            (
-                "Results link",
-                req.url_for("results", &[&id.to_string()]).unwrap().as_str(),
-            ),
-            ("Admin token", admin_token.as_str()),
-        ],
+    let content = PollCreatedTemplate {
+        name,
+        voting_link: req.url_for("vote", &[&id.to_string()]).unwrap().as_str(),
+        results_link: req.url_for("results", &[&id.to_string()]).unwrap().as_str(),
+        admin_link: req.url_for("admin", &[&id.to_string()]).unwrap().as_str(),
+        admin_token: admin_token.as_str(),
     }
     .render()
     .map_err(|e| UserError::InternalError(e.into()))?;
@@ -230,10 +221,7 @@ async fn handle_create_desc(req: HttpRequest, db: web::Data<DbPool>) -> Result<H
     return_html!(content)
 }
 
-async fn handle_vote(
-    db: web::Data<DbPool>,
-    web::Path(poll_id): web::Path<String>,
-) -> Result<HttpResponse> {
+async fn handle_vote(db: web::Data<DbPool>, poll_id: web::Path<String>) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
 
     let poll = db::get_poll(&db, poll_id).await?;
@@ -248,7 +236,7 @@ async fn handle_vote(
 async fn handle_vote_desc(
     req: HttpRequest,
     db: web::Data<DbPool>,
-    web::Path(poll_id): web::Path<String>,
+    poll_id: web::Path<String>,
 ) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
     if rate::limit_vote(&req, poll_id) {
@@ -266,14 +254,11 @@ async fn handle_vote_desc(
 
     db::update_poll(&db, &poll).await?;
 
-    let content = ReturnTemplate {
-        heading: "Voted.",
-        links: &[(
-            "See results",
-            req.url_for("results", &[poll_id.to_string()])
-                .unwrap()
-                .as_str(),
-        )],
+    let content = VotedTemplate {
+        results_link: req
+            .url_for("results", &[poll_id.to_string()])
+            .unwrap()
+            .as_str(),
     }
     .render()
     .map_err(|e| UserError::InternalError(e.into()))?;
@@ -282,10 +267,7 @@ async fn handle_vote_desc(
 }
 
 /// Returns the results website for a given poll ID
-async fn handle_results(
-    db: web::Data<DbPool>,
-    web::Path(poll_id): web::Path<String>,
-) -> Result<HttpResponse> {
+async fn handle_results(db: web::Data<DbPool>, poll_id: web::Path<String>) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
 
     let poll = db::get_poll(&db, poll_id).await?;
@@ -303,6 +285,8 @@ async fn handle_results(
 pub enum AdminAction {
     PurgeDatabase,
     ResetLimits,
+    ListPolls,
+    // Poll specific
     ResetVotes,
     DeletePoll,
 }
@@ -335,19 +319,28 @@ async fn handle_admin_action(
             limits.reset();
             log::warn!("Limits reset!");
         }
+        AdminAction::ListPolls => {
+            // LISTS *ALL* POLLS. THIS IS DANGEROUS
+            log::warn!("Listing polls...");
+            let polls = db::list_polls(&db).await?;
+            let content = templates::PollListTemplate { polls }
+                .render()
+                .map_err(|e| UserError::InternalError(e.into()))?;
+            return return_html!(content);
+        }
         _ => (), // TODO
     }
 
     return_html!(format!("Action executed: {:?}", params.action))
 }
 
-async fn handle_poll_admin(web::Path(_poll_id): web::Path<String>) -> Result<HttpResponse> {
+async fn handle_poll_admin(_poll_id: web::Path<String>) -> Result<HttpResponse> {
     return_html!(include_str!("../static/poll_admin.html"))
 }
 
 async fn handle_poll_admin_action(
     db: web::Data<DbPool>,
-    web::Path(poll_id): web::Path<String>,
+    poll_id: web::Path<String>,
     params: web::Form<AdminParams>,
 ) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;

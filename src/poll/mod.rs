@@ -102,6 +102,11 @@ impl PositionalSystem {
 pub struct PollID(u64, u64);
 
 impl PollID {
+    /// NOTE: This does not guarantee that the poll exists. It should be used only when reading a
+    /// poll id from the database.
+    pub fn new(id: u64, randpart: u64) -> PollID {
+        PollID(id, randpart)
+    }
     pub fn generate(id: u64) -> PollID {
         let mut rng = rand::thread_rng();
         let randpart: u64 = rng.gen();

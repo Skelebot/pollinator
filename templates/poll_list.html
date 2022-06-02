@@ -1,0 +1,25 @@
+{% extends "base.html" %} {% block title %}Poll list{% endblock %} {% block body %}
+
+<h2>Poll list</h2>
+
+<table class="polltable">
+    <tr>
+        <th>ID</th><th>Name</th><th>Type</th><th>Date created</th><th>Admin
+            token</th><th>Voters</th>
+    </tr>
+{% for poll in polls %}
+    <tr>
+        <td>{{ poll.id }}</td>
+        <td>{{ poll.name }}</td>
+        <td>{{ poll.poll_type }}</td>
+        <td>{{ poll.date_created }}</td>
+        <td>{{ poll.admin_token }}</td>
+        <td>{{ poll.voters }}</td>
+    </tr>
+{% endfor %}
+</table>
+
+<p>
+    <a href="/">Go home</a>
+</p>
+{% endblock %}

@@ -162,3 +162,29 @@ pub async fn delete_poll(pool: &DbPool, id: PollID) -> Result<bool, Error> {
         // Safety: id is unique, so the number of rows updated is always 0 or 1
         .map(|u| u == 1)
 }
+
+/// Retrieves *ALL POLLS*. If there are a lot of polls, this can and will obliterate the server's
+/// RAM.
+pub async fn list_polls(pool: &DbPool) -> Result<Vec<crate::templates::PollInfo>, Error> {
+    let conn = pool.get().map_err(Error::Connection)?;
+
+    let mut query = conn.prepare("SELECT * FROM polls").map_err(Error::Query)?;
+
+    let poll_iter = query
+        .query_map([], |row| {
+            let id = PollID::new(row.get(0)?, row.get(1)?);
+            Ok(crate::templates::PollInfo {
+                id,
+                name: row.get(3)?,
+                poll_type: row.get(2)?,
+                admin_token: row.get(5)?,
+                voters: row.get(6)?,
+                date_created: row.get(4)?,
+            })
+        })
+        .map_err(Error::Query)?;
+
+    let polls: Result<Vec<crate::templates::PollInfo>, rusqlite::Error> = poll_iter.collect();
+
+    polls.map_err(Error::Database)
+}

@@ -1,0 +1,17 @@
+{% extends "base.html" %} {% block title %}Poll created: {{name}}{% endblock %} {% block body %}
+
+<h2>Poll created: {{ name }}</h2>
+
+<p>
+    Voting link: <a href="{{ voting_link }}">{{ voting_link }}</a></br>
+    Results link: <a href="{{ results_link }}">{{ results_link }}</a>
+</p>
+<p>
+    Admin link: <a href="{{ admin_link }}">{{ admin_link }}</a></br>
+    Admin token (password): {{ admin_token }}
+</p>
+
+<p>
+    <a href="/">Go home</a>
+</p>
+{% endblock %}

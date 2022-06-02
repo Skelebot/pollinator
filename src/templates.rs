@@ -1,6 +1,6 @@
 use askama::Template;
 
-use crate::poll::{PollData, PollType};
+use crate::poll::{PollData, PollID, PollType};
 
 #[derive(Template)]
 #[template(path = "base.html")]
@@ -14,10 +14,19 @@ pub struct CreateTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "return.html")]
-pub struct ReturnTemplate<'a> {
-    pub heading: &'a str,
-    pub links: &'a [(&'a str, &'a str)],
+#[template(path = "poll_created.html")]
+pub struct PollCreatedTemplate<'a> {
+    pub name: &'a str,
+    pub voting_link: &'a str,
+    pub results_link: &'a str,
+    pub admin_link: &'a str,
+    pub admin_token: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "voted.html")]
+pub struct VotedTemplate<'a> {
+    pub results_link: &'a str,
 }
 
 #[derive(Template)]
@@ -57,4 +66,20 @@ pub struct DowdallResultsTemplate<'a> {
     pub poll: &'a PollData,
     pub options_sorted: &'a [(&'a str, f32)],
     pub points_total: f32,
+}
+
+/// All essential poll information - to be displayed in a poll list
+pub struct PollInfo {
+    pub id: PollID,
+    pub name: String,
+    pub poll_type: String,
+    pub date_created: String,
+    pub admin_token: String,
+    pub voters: u64,
+}
+
+#[derive(Template)]
+#[template(path = "poll_list.html")]
+pub struct PollListTemplate {
+    pub polls: Vec<PollInfo>,
 }

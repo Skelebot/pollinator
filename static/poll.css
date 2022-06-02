@@ -150,3 +150,7 @@ input:invalid {
     height: 18px;
     border-radius: 9px;
 }
+
+.polltable td {
+    padding: 5px;
+}

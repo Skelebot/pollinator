@@ -8,7 +8,7 @@
 <div id="poll_results">
     {% let (_, max) = options_sorted[0] %}
     {% let sum = ((options_sorted.len() - 1) / 2) * options_sorted.len() %}
-    {% let points = sum|into_isize * poll.voters|into_isize %}
+    {% let points = sum.clone()|into_isize * poll.voters.clone()|into_isize %}
 
     <table>
         {% for (name, num) in options_sorted %}
@@ -18,7 +18,7 @@
         {% let percent = 0.0 %}
         {% let width = 0.0 %}
         {% else %}
-        {% let percent = (num.clone()|into_f64 / points|into_f64) * 100.0 %}
+        {% let percent = (num.clone()|into_f64 / points.clone()|into_f64) * 100.0 %}
         {% let width = (num.clone()|into_f64 / max.clone()|into_f64) * 100.0 %}
         {% endif %}
         <tr class="result_entry">

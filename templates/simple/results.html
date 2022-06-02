@@ -15,7 +15,7 @@
         {%- if poll.voters == 0 %}
         {%- let percent = 0.0 %}
         {%- else %}
-        {%- let percent = (num.clone()|into_f64 / poll.voters|into_f64) * 100.0 %}
+        {%- let percent = (num.clone()|into_f64 / poll.voters.clone()|into_f64) * 100.0 %}
         {%- endif %}
         <tr class="result_entry">
             <td><label for="opt{{ loop.index0 }}">{{ name }}</label></td>
