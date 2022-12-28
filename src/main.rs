@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Result};
 use anyhow::{bail, Context};
+use std::time::Duration;
 
 mod db;
 mod error;
@@ -19,16 +20,16 @@ mod rate;
 mod templates;
 #[macro_use]
 mod util;
-//use util::return_html;
 
-// TODO: Environmental var instead
-const GENERAL_ADMIN_TOKEN: &str = "szSnAkFwtQH";
+mod admin;
+
+// TODO: cmd options
+const RATE_LIMIT_CLEANUP_DURATION: Duration = Duration::from_secs(30);
+const BIND_ADDRESS: &str = "0.0.0.0:8080";
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
-    //std::env::set_var("RUST_LOG", "actix_web=info,polls=info");
     std::env::set_var("RUST_LOG", "info");
-    std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
     let args: Vec<String> = std::env::args().collect();
@@ -43,23 +44,30 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    log::info!("Connecting to database: {} ...", db_path.to_str().unwrap());
+    // Read the admin token from envars
+    let admin_token = std::env::var("POLL_ADMIN_TOKEN").ok();
+    if admin_token.is_none() {
+        log::warn!("Environment variable POLL_ADMIN_TOKEN not set - admin functions off.");
+    }
 
     // SQLite database connection
+    log::info!("Connecting to database: {} ...", db_path.to_str().unwrap());
     let manager = SqliteConnectionManager::file(&db_path);
     let pool = db::DbPool::new(manager)?;
 
     log::info!("Connected to database!");
 
+    // Create the rate limit store and a thread that periodically
+    // checks and cleans up expired limits.
     let limits = web::Data::new(rate::LimitStore::default());
     let l = limits.clone();
     rt::spawn(async move {
         let limits = l;
-        let mut interval = time::interval(std::time::Duration::from_secs(30));
+        let mut interval = time::interval(RATE_LIMIT_CLEANUP_DURATION);
         loop {
             interval.tick().await;
             limits.cleanup();
-            log::debug!("limits cleaned up");
+            log::debug!("Rate limits cleaned up");
         }
     });
 
@@ -68,9 +76,10 @@ async fn main() -> anyhow::Result<()> {
             .wrap(middleware::Logger::default())
             .app_data(limits.clone())
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(admin::AdminToken(admin_token.clone())))
             .configure(app_config)
     })
-    .bind("0.0.0.0:8080")?
+    .bind(BIND_ADDRESS)?
     .run()
     .await
     .context("An error occured when running HttpServer")
@@ -81,32 +90,34 @@ fn app_config(config: &mut web::ServiceConfig) {
         .service(
             actix_files::Files::new("/static", "static/")
                 .prefer_utf8(true)
-                .show_files_listing(),
+                .index_file("index.html"),
         )
         .service(
-            // TODO: Convert stuff from GET requests to POST requests
             web::scope("")
                 // Allow only urls with queries shorter than 560 characters
-                // TODO: Review the limit
                 .guard(actix_web::guard::fn_guard(|req| {
-                    req.head()
-                        .uri
-                        .query()
-                        .map(|p| p.len() < 560)
-                        .unwrap_or(true)
+                    if let Some(query) = req.head().uri.query() {
+                        query.len() < 560
+                    } else {
+                        true
+                    }
                 }))
                 .service(web::resource("/").name("index").to(index))
-                // Poll creation screen
-                .service(web::resource("/create").to(handle_create))
-                // Poll creation callback
-                .service(web::resource("/create/poll").to(handle_create_desc))
-                // Poll voting screen
+                .service(
+                    web::resource("/create")
+                        // Poll creation screen
+                        .route(web::get().to(handle_create))
+                        // Poll creation callback
+                        .route(web::post().to(handle_create_desc)),
+                )
                 .service(
                     web::resource("/vote/{poll_id}")
                         .name("vote")
-                        .to(handle_vote),
+                        // Poll voting screen
+                        .route(web::get().to(handle_vote))
+                        // Poll voting callback
+                        .route(web::post().to(handle_vote_desc)),
                 )
-                // Poll voting callback
                 .service(web::resource("/vote/{poll_id}/response").to(handle_vote_desc))
                 // Poll results screen
                 .service(
@@ -117,15 +128,15 @@ fn app_config(config: &mut web::ServiceConfig) {
                 // General management callback
                 .service(
                     web::resource("/admin")
-                        .route(web::get().to(handle_admin))
-                        .route(web::post().to(handle_admin_action)),
+                        .route(web::get().to(admin::handle_admin))
+                        .route(web::post().to(admin::handle_admin_action)),
                 )
                 // Poll management callback
                 .service(
                     web::resource("/admin/{poll_id}")
                         .name("admin")
-                        .route(web::get().to(handle_poll_admin))
-                        .route(web::post().to(handle_poll_admin_action)),
+                        .route(web::get().to(admin::handle_poll_admin))
+                        .route(web::post().to(admin::handle_poll_admin_action)),
                 )
                 // 404 screen
                 .default_service(web::to(handle_default)),
@@ -165,27 +176,34 @@ async fn handle_create(req: HttpRequest) -> Result<HttpResponse> {
     }
 }
 
+#[derive(Deserialize)]
+struct CreateParams {
+    name: String,
+    r#type: String,
+    data: String,
+}
+
 /// Handles complete poll creation requests
-/// Params: TODO: write params
-async fn handle_create_desc(req: HttpRequest, db: web::Data<DbPool>) -> Result<HttpResponse> {
+/// Params:
+///  - name: Poll name (String)
+///  - type: PollType enum variant, see PollType::try_parse for parsing format
+///  - data: To be parsed as a PollFormat trait object, see the corresponding
+///    PollType::from_data function for the proper format
+async fn handle_create_desc(
+    req: HttpRequest,
+    params: web::Form<CreateParams>,
+    db: web::Data<DbPool>,
+) -> Result<HttpResponse> {
     // Check for rate limiting of poll creation for given IP
     if rate::limit_create(&req) {
         return Err(UserError::TooManyRequests.into());
     }
-    // TODO: Remove QString dependency
-    let query = QString::from(req.query_string());
 
-    let name = query
-        .get("name")
-        .ok_or_else(|| UserError::MissingParam("name".to_string()))?;
+    let name = &params.name;
+    let ptype = PollType::try_parse(&params.r#type)?;
+    let data = params.data.as_str();
 
-    // Parse poll type
-    let ptype = query
-        .get("type")
-        .ok_or_else(|| UserError::MissingParam("type".to_string()))?;
-    let ptype = PollType::try_parse(ptype)?;
-
-    let format = poll::create_poll_format_from_query(ptype, &query)?;
+    let format = poll::create_poll_format_from_data(ptype, data)?;
 
     // Generate poll ID
     let id = db::last_id(&db).await? + 1;
@@ -237,6 +255,7 @@ async fn handle_vote_desc(
     req: HttpRequest,
     db: web::Data<DbPool>,
     poll_id: web::Path<String>,
+    params: String,
 ) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
     if rate::limit_vote(&req, poll_id) {
@@ -245,7 +264,8 @@ async fn handle_vote_desc(
 
     let mut poll = db::get_poll(&db, poll_id).await?;
 
-    let query = QString::from(req.query_string());
+    //let query = QString::from(req.query_string());
+    let query = QString::from(QString::from(params.as_str()));
 
     poll.format
         .register_votes(&query)
@@ -278,94 +298,4 @@ async fn handle_results(db: web::Data<DbPool>, poll_id: web::Path<String>) -> Re
         .map_err(|e| UserError::InternalError(e.into()))?;
 
     return_html!(content)
-}
-
-// TODO: move somewhere
-#[derive(Deserialize, Debug)]
-pub enum AdminAction {
-    PurgeDatabase,
-    ResetLimits,
-    ListPolls,
-    // Poll specific
-    ResetVotes,
-    DeletePoll,
-}
-
-#[derive(Deserialize)]
-struct AdminParams {
-    token: String,
-    action: AdminAction,
-}
-
-async fn handle_admin() -> Result<HttpResponse> {
-    return_html!(include_str!("../static/admin.html"))
-}
-
-async fn handle_admin_action(
-    db: web::Data<DbPool>,
-    params: web::Form<AdminParams>,
-    limits: web::Data<rate::LimitStore>,
-) -> Result<HttpResponse> {
-    if params.token != GENERAL_ADMIN_TOKEN {
-        return Err(UserError::InvalidAdminToken.into());
-    }
-
-    match params.action {
-        AdminAction::PurgeDatabase => {
-            let r = db::purge(&db).await?;
-            log::warn!("Database purged: {} rows deleted!", r);
-        }
-        AdminAction::ResetLimits => {
-            limits.reset();
-            log::warn!("Limits reset!");
-        }
-        AdminAction::ListPolls => {
-            // LISTS *ALL* POLLS. THIS IS DANGEROUS
-            log::warn!("Listing polls...");
-            let polls = db::list_polls(&db).await?;
-            let content = templates::PollListTemplate { polls }
-                .render()
-                .map_err(|e| UserError::InternalError(e.into()))?;
-            return return_html!(content);
-        }
-        _ => (), // TODO
-    }
-
-    return_html!(format!("Action executed: {:?}", params.action))
-}
-
-async fn handle_poll_admin(_poll_id: web::Path<String>) -> Result<HttpResponse> {
-    return_html!(include_str!("../static/poll_admin.html"))
-}
-
-async fn handle_poll_admin_action(
-    db: web::Data<DbPool>,
-    poll_id: web::Path<String>,
-    params: web::Form<AdminParams>,
-) -> Result<HttpResponse> {
-    let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
-    let mut poll = db::get_poll(&db, poll_id).await?;
-
-    if params.token != poll.data.admin_link.as_str() {
-        log::warn!(
-            "Invalid poll token: {}, {}",
-            params.token,
-            poll.data.admin_link.as_str()
-        );
-        return Err(UserError::InvalidAdminToken.into());
-    }
-
-    match params.action {
-        AdminAction::ResetVotes => {
-            poll.data.voters = 0;
-            poll.format.reset();
-            db::update_poll(&db, &poll).await?;
-        }
-        AdminAction::DeletePoll => {
-            db::delete_poll(&db, poll.data.id).await?;
-        }
-        _ => (), // TODO
-    }
-
-    return_html!(format!("Action executed: {:?}", params.action))
 }

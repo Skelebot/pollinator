@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::poll::{create_poll_format_from_bytes, Poll, PollData, PollID, PollType};
+use crate::{
+    poll::{create_poll_format_from_bytes, Poll, PollData, PollID, PollType},
+    util,
+};
 
 pub type DbPool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -39,15 +42,18 @@ pub async fn get_poll(pool: &DbPool, id: PollID) -> Result<Poll, Error> {
         .prepare("SELECT * FROM polls where id = ?1")
         .map_err(Error::Query)?;
 
-    // TODO: Use column indices instead of names and check map_err-s
     let mut poll_iter = query
         .query_map([id.index()], |row| {
             use rusqlite::types::Type;
             let ptype = PollType::try_parse(&row.get::<_, String>("type")?)
                 .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, Type::Text, e.into()))?;
+            let randpart: String = row.get("randpart")?;
+            let id_randpart = util::read_base64_u64(&randpart)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, Type::Text, e.into()))?;
+            let read_id: PollID = PollID::new(id.0, id_randpart);
             Ok(Poll {
                 data: PollData {
-                    id,
+                    id: read_id,
                     ptype,
                     name: row.get("name")?,
                     date_created: chrono::DateTime::parse_from_rfc3339(
@@ -102,8 +108,7 @@ pub async fn insert_poll(pool: &DbPool, poll: Poll) -> Result<(), Error> {
     let conn = pool.get().map_err(Error::Connection)?;
 
     let params = rusqlite::params![
-        // If randpart is > 2^63 this fails; convert to i64 to avoid this
-        poll.data.id.randpart() as i64,
+        util::encode_base64_u64(poll.data.id.randpart()),
         poll.data.ptype.to_string(),
         poll.data.name,
         poll.data.date_created.to_rfc3339(),
@@ -163,8 +168,7 @@ pub async fn delete_poll(pool: &DbPool, id: PollID) -> Result<bool, Error> {
         .map(|u| u == 1)
 }
 
-/// Retrieves *ALL POLLS*. If there are a lot of polls, this can and will obliterate the server's
-/// RAM.
+/// Retrieves *ALL POLLS*. If there are a lot of polls, this can be very slow or fail spectacularly.
 pub async fn list_polls(pool: &DbPool) -> Result<Vec<crate::templates::PollInfo>, Error> {
     let conn = pool.get().map_err(Error::Connection)?;
 

@@ -1,6 +1,6 @@
 CREATE TABLE polls (
     id INTEGER PRIMARY KEY,
-    randpart INTEGER NOT NULL,
+    randpart TEXT NOT NULL,
     type TEXT NOT NULL,
     name TEXT NOT NULL,
     date_created TEXT NOT NULL,

@@ -12,14 +12,11 @@ pub struct MultipleChoicePoll {
 }
 
 impl PollFormat for MultipleChoicePoll {
-    fn from_query(query: &QString) -> Result<Box<Self>, anyhow::Error>
+    fn from_data(data: &str) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized,
     {
-        let options_string = query
-            .get("options")
-            .context("'options' query element not found")?;
-        let options = options_string
+        let options = data
             .split(',')
             .map(|s| (s.to_string(), 0u64))
             .collect();

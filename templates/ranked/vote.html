@@ -5,7 +5,7 @@
 
 <h2>Voting on poll: {{ poll.name }}</h2>
 
-<form action="/vote/{{ poll.id }}/response">
+<form action="/vote/{{ poll.id }}/response" method="post">
     <fieldset>
     <legend>{{ poll.name }}</legend>
 

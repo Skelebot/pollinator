@@ -14,14 +14,11 @@ pub struct DowdallPoll {
 }
 
 impl PollFormat for DowdallPoll {
-    fn from_query(query: &QString) -> Result<Box<Self>, anyhow::Error>
+    fn from_data(data: &str) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized,
     {
-        let options_string = query
-            .get("options")
-            .context("'options' query element not found")?;
-        let options = options_string
+        let options = data
             .split(',')
             .map(|s| (s.to_string(), 0.0))
             .collect();
@@ -59,7 +56,6 @@ impl PollFormat for DowdallPoll {
             .iter()
             .map(|(opt, n)| (opt.as_str(), *n))
             .collect();
-        // TODO: Revise
         options.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
         DowdallResultsTemplate {
             poll: data,

@@ -99,7 +99,7 @@ impl PositionalSystem {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub struct PollID(u64, u64);
+pub struct PollID(pub u64, u64);
 
 impl PollID {
     /// NOTE: This does not guarantee that the poll exists. It should be used only when reading a
@@ -124,7 +124,8 @@ impl PollID {
 
 impl std::fmt::Display for PollID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let id_encoded = util::encode_base64_u64(self.0);
+        //let id_encoded = util::encode_base64_u64(self.0);
+        let id_encoded = self.0.to_string();
         let randpart_encoded = util::encode_base64_u64(self.1);
         f.write_fmt(format_args!("{}+{}", id_encoded, randpart_encoded))
     }
@@ -136,7 +137,10 @@ impl TryFrom<&str> for PollID {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let sep = value.find('+').ok_or(ParseError::PlusNotFound)?;
 
-        let id = util::read_base64_u64(&value[..sep])?;
+        //let id = util::read_base64_u64(&value[..sep])?;
+        let id = (&value[..sep])
+            .parse::<u64>()
+            .map_err(|e| ParseError::InvalidNumber(e))?;
         let randpart = util::read_base64_u64(&value[sep + 1..])?;
 
         Ok(PollID(id, randpart))
@@ -160,7 +164,7 @@ pub trait PollFormat: Send + Sync + 'static {
     where
         Self: Sized;
 
-    fn from_query(query: &QString) -> Result<Box<Self>, anyhow::Error>
+    fn from_data(data: &str) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized;
 
@@ -175,21 +179,21 @@ pub trait PollFormat: Send + Sync + 'static {
     fn reset(&mut self);
 }
 
-pub fn create_poll_format_from_query(
+pub fn create_poll_format_from_data(
     ptype: PollType,
-    query: &QString,
+    data: &str,
 ) -> Result<Box<dyn PollFormat>, UserError> {
     Ok(match ptype {
-        PollType::Single => SingleChoicePoll::from_query(query).map_err(UserError::PollCreation)?,
+        PollType::Single => SingleChoicePoll::from_data(data).map_err(UserError::PollCreation)?,
         PollType::Multiple => {
-            MultipleChoicePoll::from_query(query).map_err(UserError::PollCreation)?
+            MultipleChoicePoll::from_data(data).map_err(UserError::PollCreation)?
         }
         PollType::Ranked(sys) => match sys {
             PositionalSystem::Borda => {
-                BordaPoll::from_query(query).map_err(UserError::PollCreation)?
+                BordaPoll::from_data(data).map_err(UserError::PollCreation)?
             }
             PositionalSystem::Dowdall => {
-                DowdallPoll::from_query(query).map_err(UserError::PollCreation)?
+                DowdallPoll::from_data(data).map_err(UserError::PollCreation)?
             }
             PositionalSystem::Score(_) => {
                 return Err(UserError::PollCreation(anyhow::anyhow!(

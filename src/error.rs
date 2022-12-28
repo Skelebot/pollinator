@@ -11,8 +11,12 @@ pub enum UserError {
     MissingParam(String),
     #[error("Too many requests")]
     TooManyRequests,
-    #[error("Invalid admin token")]
+    #[error("Invalid admin token specified")]
     InvalidAdminToken,
+    #[error("Admin functions are disabled on this server")]
+    AdminOff,
+    #[error("Invalid admin action")]
+    InvalidAdminAction,
 }
 
 impl ResponseError for UserError {
@@ -20,7 +24,7 @@ impl ResponseError for UserError {
         use UserError::*;
         match *self {
             InternalError(_) | PollCreation(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            MissingParam(_) => StatusCode::BAD_REQUEST,
+            MissingParam(_) | AdminOff | InvalidAdminAction => StatusCode::BAD_REQUEST,
             InvalidAdminToken => StatusCode::UNAUTHORIZED,
             TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
         }
@@ -38,7 +42,7 @@ impl ResponseError for UserError {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 /// Error when parsing query parameters
 pub enum ParseError {
     #[error("Poll type incomplete: {0}; expected more after byte {1}")]

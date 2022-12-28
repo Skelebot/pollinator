@@ -27,8 +27,7 @@ impl DerefMut for LimitMap {
 #[derive(Default)]
 pub struct LimitStore {
     pub create: Mutex<HashMap<IpAddr, Instant>>,
-    // TODO: optimize (usize instead of PollID)
-    pub vote: Mutex<HashMap<(IpAddr, PollID), Instant>>,
+    pub vote: Mutex<HashMap<(IpAddr, usize), Instant>>,
 }
 
 impl LimitStore {
@@ -79,15 +78,15 @@ impl LimitStore {
     pub fn check_vote(&self, addr: IpAddr, poll_id: PollID) -> bool {
         let mut limits = self.vote.lock().unwrap();
         let now = Instant::now();
-        if let Some(instant) = limits.get(&(addr, poll_id)) {
+        if let Some(instant) = limits.get(&(addr, poll_id.index())) {
             if now - *instant < Self::VOTE_LIMIT {
                 true
             } else {
-                limits.remove(&(addr, poll_id));
+                limits.remove(&(addr, poll_id.index()));
                 false
             }
         } else {
-            limits.insert((addr, poll_id), now);
+            limits.insert((addr, poll_id.index()), now);
             false
         }
     }
@@ -95,7 +94,6 @@ impl LimitStore {
 
 /// Checks whether a request's address should be rate-limited
 pub fn limit_create(req: &HttpRequest) -> bool {
-    // todo: rate limit only if address.is_global()
     let addr = req.peer_addr();
     let addr = if let Some(addr) = addr {
         addr.ip()
@@ -106,6 +104,8 @@ pub fn limit_create(req: &HttpRequest) -> bool {
     if addr.is_loopback() {
         return false;
     }
+    // rate limit only if the address is globally routable (currently unstable)
+    // if(!addr.is_global()) { return false; }
     let store = &req.app_data::<web::Data<LimitStore>>().unwrap();
 
     store.check_create(addr)
@@ -114,7 +114,6 @@ pub fn limit_create(req: &HttpRequest) -> bool {
 /// Checks whether a request's address should be rate-limited
 /// PollID must be valid.
 pub fn limit_vote(req: &HttpRequest, poll_id: PollID) -> bool {
-    // todo: rate limit only if address.is_global()
     let addr = req.peer_addr();
     let addr = if let Some(addr) = addr {
         addr.ip()
@@ -125,7 +124,8 @@ pub fn limit_vote(req: &HttpRequest, poll_id: PollID) -> bool {
     if addr.is_loopback() {
         return false;
     }
-
+    // rate limit only if the address is globally routable (currently unstable)
+    // if(!addr.is_global()) { return false; }
     let store = &req.app_data::<web::Data<LimitStore>>().unwrap();
 
     store.check_vote(addr, poll_id)
