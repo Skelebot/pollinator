@@ -15,7 +15,7 @@
         {%- if poll.voters == 0 %}
         {%- let percent = 0.0 %}
         {%- else %}
-        {%- let percent = (num.clone()|into_f64 / poll.voters.clone()|into_f64) * 100.0 %}
+        {%- let percent = (num.clone()|into_f64 / points_max.clone()|into_f64) * 100.0 %}
         {%- endif %}
         <tr class="result_entry">
             <td><label for="opt{{ loop.index0 }}">{{ name }}</label></td>
@@ -24,11 +24,15 @@
                     <rect x="0" y="0" width="100%" height="100%" fill="currentColor"></rect>
                   </svg>
             </div></td>
-            <td><span id="result_numbers">{{ num }} votes ({{ "{:.2}"|format(percent) }})%</span></td>
+            <td><span id="result_numbers">{{ num }} points ({{ "{:.2}"|format(percent) }})%</span></td>
         </tr>
         {% endfor %}
     </table>
-    <p id="voters_count">Voters total: {{ poll.voters }}</p>
+    <p id="voters_count">
+        Voters total: {{ poll.voters }}<br>
+        Points total: {{ points_total }}<br>
+        Maximum achievable points: {{ points_max }}
+    </p>
 
 </div>
 

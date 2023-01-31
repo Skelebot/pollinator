@@ -1,12 +1,20 @@
 use std::cmp::Ordering;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use askama::Template;
 use bincode::{Decode, Encode};
 
-use crate::templates::{DowdallResultsTemplate, RankedVoteTemplate};
+use super::templates::*;
+use crate::poll::{PollData, PollFormat};
+use crate::util;
 
-use super::*;
+#[derive(Template)]
+#[template(path = "ranked/dowdall_results.html")]
+pub struct DowdallResultsTemplate<'a> {
+    pub poll: &'a PollData,
+    pub options_sorted: &'a [(&'a str, f32)],
+    pub points_total: f32,
+}
 
 #[derive(Encode, Decode)]
 pub struct DowdallPoll {
@@ -14,22 +22,18 @@ pub struct DowdallPoll {
 }
 
 impl PollFormat for DowdallPoll {
+    /// Format:
+    /// `{option1},{option2},...,{optionN}
+    /// `{option}` - option name (string)
     fn from_data(data: &str) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized,
     {
-        let options = data
-            .split(',')
-            .map(|s| (s.to_string(), 0.0))
-            .collect();
+        let options: Vec<(String, f32)> = data.split(',').map(|s| (s.to_string(), 0.0)).collect();
+        if options.len() < 2 {
+            return Err(anyhow!("Too few options specified"));
+        }
         Ok(Box::new(DowdallPoll { options }))
-    }
-
-    fn create_site_add_option_script() -> Result<String, anyhow::Error>
-    where
-        Self: Sized,
-    {
-        Ok(String::new())
     }
 
     fn voting_site(&self, data: &PollData) -> Result<String, askama::Error> {
@@ -65,31 +69,34 @@ impl PollFormat for DowdallPoll {
         .render()
     }
 
-    fn register_votes(&mut self, query: &QString) -> Result<(), anyhow::Error> {
-        for i in 0..self.options.len() {
-            let resp = query
-                .get(&i.to_string())
-                .context("Expected number arguments 0..{number of options}")?;
-            let place: u64 = resp.parse().context("'response' must be a number")?;
-            self.options
-                .get_mut(i)
-                .context("option outside of the range of options")?
-                .1 += 1.0 / (place + 1) as f32;
+    /// Format:
+    /// {p0},{p1},...,{pN-1},{pN}
+    /// p{N} - place assigned to the option number N
+    /// N - the number of poll options
+    fn register_votes(&mut self, query: &str) -> Result<(), anyhow::Error> {
+        let opts = util::parse_poll_opts(query, self.options.len())?;
+        for (index, (opt_index, opt_place)) in opts.iter().enumerate() {
+            // TODO: Check if place values are unique (wait until .is_sorted is stabilized?)
+            // Check the argument order. Avoids malicious requests that do not vote
+            // on some options or vote twice on one
+            if *opt_index as usize != index {
+                return Err(anyhow!(
+                    "unexpected index: {}, expected {}",
+                    opt_index,
+                    index
+                ));
+            }
+            let option = self
+                .options
+                .get_mut(index)
+                .context("Option number out of range")?;
+            option.1 += 1.0 / (opt_place + 1) as f32;
         }
         Ok(())
     }
 
     fn save_state(&self) -> Result<Vec<u8>, anyhow::Error> {
         bincode::encode_to_vec(self, bincode::config::standard()).context("Failed to encode state")
-    }
-
-    fn from_bytes(bytes: Vec<u8>) -> Result<Box<dyn PollFormat>, anyhow::Error>
-    where
-        Self: Sized,
-    {
-        let (dec, _): (Self, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())
-            .context("Failed to decode state")?;
-        Ok(Box::new(dec))
     }
 
     fn reset(&mut self) {

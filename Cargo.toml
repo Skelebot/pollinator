@@ -1,26 +1,27 @@
 [package]
 authors = ["Antoni Simka <antonisimka.8@gmail.com>"]
 edition = "2021"
-name = "polls"
-version = "1.0.0"
+name = "pollinator"
+version = "1.2.0"
+
 [dependencies]
 actix-files = "0.6.2"
-actix-web = "4.2.0"
-anyhow = "1.0.64"
+actix-web = "4.2.1"
+anyhow = "1.0.68"
+# TODO: yarte?
 askama = "0.11.1"
-base64 = "0.13.0"
-bincode = "2.0.0-rc.1"
-chrono = "0.4.22"
-env_logger = "0.9.0"
-futures = "0.3.24"
+base64 = "0.20.0"
+bincode = "2.0.0-rc.2"
+chrono = "0.4.23"
+env_logger = "0.10.0"
+futures = "0.3.25"
 log = "0.4.17"
-qstring = "0.7.2"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
 rand = "0.8.5"
 rusqlite = "0.28.0"
-thiserror = "1.0.34"
+thiserror = "1.0.38"
 
 [dependencies.serde]
 features = ["derive"]
-version = "1.0.144"
+version = "1.0.152"

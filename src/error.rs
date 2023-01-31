@@ -7,8 +7,8 @@ pub enum UserError {
     InternalError(#[source] anyhow::Error),
     #[error("Failed to create poll from data")]
     PollCreation(#[source] anyhow::Error),
-    #[error("Missing query parameter: {0}")]
-    MissingParam(String),
+    #[error("Failed to vote on poll")]
+    Voting(#[source] anyhow::Error),
     #[error("Too many requests")]
     TooManyRequests,
     #[error("Invalid admin token specified")]
@@ -23,20 +23,24 @@ impl ResponseError for UserError {
     fn status_code(&self) -> StatusCode {
         use UserError::*;
         match *self {
-            InternalError(_) | PollCreation(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            MissingParam(_) | AdminOff | InvalidAdminAction => StatusCode::BAD_REQUEST,
+            InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            PollCreation(_) | Voting(_) | AdminOff | InvalidAdminAction => StatusCode::BAD_REQUEST,
             InvalidAdminToken => StatusCode::UNAUTHORIZED,
             TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
         }
     }
 
-    fn error_response(&self) -> actix_web::HttpResponse {
+    fn error_response(&self) -> HttpResponse {
         use UserError::*;
         let mut req = HttpResponse::build(self.status_code());
         req.content_type("text/plain; charset=utf-8");
 
         match self {
             TooManyRequests => req.body(include_str!("../static/limit.html")),
+            InternalError(e) | PollCreation(e) | Voting(e) => {
+                // TODO: When std::error::Report stabilizes, use it instead
+                req.body(format!("{}: {}", self, e))
+            }
             other => req.body(format!("{}", other)),
         }
     }
@@ -55,8 +59,6 @@ pub enum ParseError {
     InvalidNumber(#[source] std::num::ParseIntError),
     #[error("Invalid base 64 number")]
     InvalidBase64(#[source] base64::DecodeError),
-    #[error("Base 64 number too short")]
-    Base64TooShort,
     #[error("Poll ID has to contain a '+'")]
     PlusNotFound,
 }

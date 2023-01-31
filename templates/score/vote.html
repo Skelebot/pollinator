@@ -11,14 +11,7 @@
 
         {%- for (name, num) in options -%}
         <div class="poll_option">
-
-            {%- if multiple -%}
-                <input type="checkbox" class="option_box" value="{{ loop.index0 }}" name="response" />
-            {%- else -%}
-                <input type="radio" class="option_box" value="{{ loop.index0 }}" name="response" {%- if loop.first %} checked
-                    {%- endif %} />
-            {%- endif -%}
-
+            <input type="number" id="{{ loop.index0 }}" name="{{ loop.index0 }}" min="{{ points_min }}" max="{{ points_max }}" value="{{points_max}}" required/>
             <label for="{{ loop.index0 }}">{{ name }}</label>
         </div>
         {%- endfor -%}

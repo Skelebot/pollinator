@@ -1,20 +1,16 @@
+use crate::poll::PollID;
 use askama::Template;
-
-use crate::poll::{PollData, PollID, PollType};
 
 #[derive(Template)]
 #[template(path = "base.html")]
+/// Contains the html overall template (header etc)
 pub struct BaseTemplate<'a> {
     pub title: &'a str,
-}
-#[derive(Template)]
-#[template(path = "create.html")]
-pub struct CreateTemplate {
-    pub poll_type: PollType,
 }
 
 #[derive(Template)]
 #[template(path = "poll_created.html")]
+/// Returned when a poll was successfully created.
 pub struct PollCreatedTemplate<'a> {
     pub name: &'a str,
     pub voting_link: &'a str,
@@ -25,47 +21,9 @@ pub struct PollCreatedTemplate<'a> {
 
 #[derive(Template)]
 #[template(path = "voted.html")]
+/// Returned when a vote was successfully registered.
 pub struct VotedTemplate<'a> {
     pub results_link: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "simple/vote.html")]
-pub struct SimpleVoteTemplate<'a> {
-    pub poll: &'a PollData,
-    pub multiple: bool,
-    pub options: &'a [(&'a str, u64)],
-}
-
-#[derive(Template)]
-#[template(path = "simple/results.html")]
-pub struct SimpleResultsTemplate<'a> {
-    pub poll: &'a PollData,
-    pub options_sorted: &'a [(&'a str, u64)],
-}
-
-#[derive(Template)]
-#[template(path = "ranked/vote.html")]
-pub struct RankedVoteTemplate<'a> {
-    pub poll: &'a PollData,
-    pub can_unranked: bool,
-    pub unique_scores: bool,
-    pub options: &'a [&'a str],
-}
-
-#[derive(Template)]
-#[template(path = "ranked/borda_results.html")]
-pub struct BordaResultsTemplate<'a> {
-    pub poll: &'a PollData,
-    pub options_sorted: &'a [(&'a str, u64)],
-}
-
-#[derive(Template)]
-#[template(path = "ranked/dowdall_results.html")]
-pub struct DowdallResultsTemplate<'a> {
-    pub poll: &'a PollData,
-    pub options_sorted: &'a [(&'a str, f32)],
-    pub points_total: f32,
 }
 
 /// All essential poll information - to be displayed in a poll list
@@ -80,6 +38,7 @@ pub struct PollInfo {
 
 #[derive(Template)]
 #[template(path = "poll_list.html")]
+/// Returned when a list of complete poll data is requested
 pub struct PollListTemplate {
     pub polls: Vec<PollInfo>,
 }

@@ -1,16 +1,19 @@
 {% extends "base.html" %} {% block title %}Poll created: {{name}}{% endblock %} {% block body %}
+<style>
+</style>
 
 <h2>Poll created: {{ name }}</h2>
-
 <p>
-    Voting link: <a href="{{ voting_link }}">{{ voting_link }}</a></br>
-    Results link: <a href="{{ results_link }}">{{ results_link }}</a>
+    Your poll has been created. Copy the following links and send them to your voters.
+    <span class="link">Voting link: <a href="{{ voting_link }}">{{ voting_link }}</a></span>
+    <span class="link">Results link: <a href="{{ results_link }}">{{ results_link }}</a></span>
 </p>
 <p>
-    Admin link: <a href="{{ admin_link }}">{{ admin_link }}</a></br>
-    Admin token (password): {{ admin_token }}
+    You can manage your poll using this link and password.<br/>
+    WARNING! This password appears only here. Save it somewhere safe.
+    <span class="link">Admin link: <a href="{{ admin_link }}">{{ admin_link }}</a></span>
+    <span class="link">Admin token (password): {{ admin_token }}</span>
 </p>
-
 <p>
     <a href="/">Go home</a>
 </p>

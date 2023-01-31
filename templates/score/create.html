@@ -1,0 +1,120 @@
+{% extends "base.html" %} {% block title %}Creating a poll{% endblock title %} {% block body %}
+
+<script>
+    let options_list = [];
+    function changeName() {
+        let name = document.getElementById("poll_name").value;
+        if (!(name.trim() === "")) {
+            document.getElementById("poll_name_preview").innerHTML = name;
+        }
+    }
+
+    function addOption() {
+        let option_name = document.getElementById("option_name").value;
+
+        if (!(option_name.trim() === "")) {
+            options_list.push(option_name);
+            redrawPreview();
+        } else {
+            let error = document.getElementById("error");
+            error.innerHTML = "Option name cannot be empty";
+        }
+    }
+
+    function redrawPreview() {
+        let options = document.getElementById("poll_options");
+        options.innerHTML = "";
+
+        options_list.forEach((element, index) => {
+            // generates a poll preview from a string array `options_list`
+            let div = document.createElement("div");
+            div.className = "poll_option";
+
+            let option = document.createElement("input");
+            option.type = "number";
+            option.width = 20;
+
+            option.value = "opt" + index;
+            option.name = "poll_preview";
+            div.appendChild(option);
+
+            let label = document.createElement("label");
+            label.setAttribute("for", "opt" + index);
+            label.textContent = element;
+            div.appendChild(label);
+            options.appendChild(div);
+        });
+    }
+
+    function onSubmit(event) {
+            if (options_list.length < 2) {
+                    let error = document.getElementById("error");
+                    error.innerHTML = "Poll needs to have at least 2 options";
+                    event.preventDefault();
+                    return false;
+                }
+            let name = document.getElementById("poll_name_preview").innerHTML;
+
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = '/create';
+
+            options_list.push(document.getElementById("min_points").value);
+            options_list.push(document.getElementById("max_points").value);
+
+            const params = {type: '{{ poll_type }}', name: `${name}`, data: `${options_list.join(',')}`};
+
+            for (const key in params) {
+                    const field = document.createElement('input');
+                    field.type = 'hidden';
+                    field.name = key;
+                    field.value = params[key];
+                    form.appendChild(field);
+            }
+
+            document.body.appendChild(form);
+            form.submit();
+            event.preventDefault();
+        }
+</script>
+
+<label for="poll_name">Poll name: </label><br>
+<input type="text" name="poll_name" id="poll_name" maxlength="100" onchange="changeName();">
+<button onclick="changeName();">Set</button>
+<br />
+
+<label for="option_name">Option name: </label><br>
+<input type="text" name="option_name" id="option_name" maxlength="100">
+<button onclick="addOption();">Add</button>
+<br />
+
+<form id="form">
+    <fieldset id="poll_settings">
+        <legend>Poll settings</legend>
+        <div class="poll_option">
+            <label for="min_points">Minimum assignable points: </label>
+            <input type="number" id="min_points" name="min_points" min="0" max="65536">
+        </div>
+        <div class="poll_option">
+            <label for="max_points">Maximum assignable points: </label>
+            <input type="number" id="max_points" name="max_points" min="1" max="65536">
+        </div>
+    </fieldset>
+    <h3>Poll preview</h3>
+    <fieldset id="poll_fieldset">
+        <legend id="poll_name_preview">Unnamed poll</legend>
+
+        <div id="poll_options">
+            <i>Your options will be shown here</i>
+        </div>
+        <button type="button">Submit</button>
+    </fieldset>
+<p id="error"></p>
+    <button type="submit">Create poll</button>
+    <script>
+        const form = document.getElementById('form');
+        form.addEventListener('submit', onSubmit);
+    </script>
+</form>
+
+{% endblock body %}

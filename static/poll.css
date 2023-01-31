@@ -7,13 +7,23 @@ body {
     background-color: #111;
     color: #eee;
     padding: 1rem;
+    overflow-x: scroll;
 }
 
-h3, h4 {
+form {
+    overflow-x: scroll;
+}
+
+p {
+    line-height: 120%;
+}
+
+h3,
+h4 {
     margin-top: 2rem;
 }
 
-fieldset > h4:first-of-type {
+fieldset>h4:first-of-type {
     margin-top: .5rem;
 }
 
@@ -28,12 +38,8 @@ fieldset {
     margin: 1em 0;
 }
 
-.result_entry > td:first-child {
+.result_entry>td:first-child {
     text-align: right;
-}
-
-table input {
-    margin: .4rem;
 }
 
 .poll_option {
@@ -49,7 +55,7 @@ table input {
     margin-bottom: 1em;
 }
 
-.poll_option > details {
+.poll_option>details {
     margin-left: 2em;
     margin-bottom: .5em;
 }
@@ -96,18 +102,42 @@ form.input {
     display: block;
 }
 
-table, tr {
+input:focus {
+    outline: 2px solid #55f;
+}
+
+input:invalid {
+    border-color: #f55;
+}
+
+input[type=text], input[type=number] {
+    border-radius: 5px;
+    padding-left: 5px;
+    height: 18px;
+}
+input[type=number] {
+    width: 60px;
+}
+
+table input {
+    margin: .4rem;
+}
+
+table,
+tr {
     border-top: 2px solid #444;
     border-collapse: collapse;
 }
 
-table, tr:first-of-type {
+table,
+tr:first-of-type {
     border: none;
 }
 
 #poll_results tr {
     border-top: none;
 }
+
 #poll_results .meter {
     margin: .4em;
 }
@@ -128,13 +158,18 @@ details[open] summary {
     margin-bottom: .5em;
 }
 
+.link {
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+span a {
+    white-space: nowrap;
+}
+
 a {
     color: inherit;
     text-decoration: 2px solid underline #55f;
-}
-
-input:invalid {
-    border-color: #f55;
 }
 
 .meter {

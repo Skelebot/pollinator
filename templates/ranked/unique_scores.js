@@ -1,13 +1,13 @@
-var radios = new Array(max);
-var checks = new Array(max);
+let radios = new Array(max);
+let checks = new Array(max);
 update_radios();
 
 function update_radios() {
     radios = new Array(max);
     checks = new Array(max);
-    for (var y = 0; y < max; y++) {
+    for (let y = 0; y < max; y++) {
         radios[y] = new Array(x_max);
-        for (var x = 0; x < x_max; x++) {
+        for (let x = 0; x < x_max; x++) {
             radios[y][x] = document.getElementById(`${y}_${x}`);
             if (radios[y][x].checked) checks[y] = x;
             radios[y][x].onclick = swap_with;
@@ -20,7 +20,7 @@ function swap_with(event) {
     let x = parseInt(event.target.value);
 
     if (can_unranked) {
-        if (x == max) {
+        if (x === max) {
             checks[y] = max;
             return;
         }
@@ -28,8 +28,8 @@ function swap_with(event) {
 
     let prev_x = checks[y];
     checks[y] = x;
-    for (var iy = 0; iy < max; iy++) {
-        if (iy == y) { continue; }
+    for (let iy = 0; iy < max; iy++) {
+        if (iy === y) { continue; }
         if (radios[iy][x].checked) {
             radios[iy][x].checked = false;
             radios[iy][prev_x].checked = true;

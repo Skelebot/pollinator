@@ -2,7 +2,6 @@ use actix_web::rt::{self, time};
 use askama::Template;
 use db::DbPool;
 use poll::{Poll, PollData, PollID, PollType};
-use qstring::QString;
 use r2d2_sqlite::SqliteConnectionManager;
 use serde::Deserialize;
 
@@ -10,22 +9,29 @@ use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Res
 use anyhow::{bail, Context};
 use std::time::Duration;
 
+#[macro_use]
+mod util;
 mod db;
 mod error;
 use error::*;
-
-use crate::templates::{PollCreatedTemplate, VotedTemplate};
+mod admin;
 mod poll;
 mod rate;
 mod templates;
-#[macro_use]
-mod util;
 
-mod admin;
-
-// TODO: cmd options
-const RATE_LIMIT_CLEANUP_DURATION: Duration = Duration::from_secs(30);
-const BIND_ADDRESS: &str = "0.0.0.0:8080";
+/// The database path. Can be overridden by cmd arguments.
+const DB_PATH_DEFAULT: &str = "db/main.db";
+/// The IP address the server binds to. Can be overridden by cmd arguments.
+const BIND_ADDRESS_DEFAULT: &str = "0.0.0.0:8080";
+/// The time interval between each rate limit store cleanup (in seconds). Can be overridden
+/// by a "POLL_CLEANUP_INTERVAL" environmental variable.
+const CLEANUP_INTERVAL_DEFAULT: Duration = Duration::from_secs(30);
+/// The time interval that a single IP has to wait before creating a new poll (in seconds).
+/// Can be overridden by a "POLL_CREATE_LIMIT" environmental variable.
+const CREATE_LIMIT: Duration = Duration::from_secs(10 * 60);
+/// The time interval that a single IP has to wait before voting on a single poll.
+/// Can be overridden by a "POLL_VOTE_LIMIT" environmental variable.
+const VOTE_LIMIT: Duration = Duration::from_secs(30 * 60);
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,10 +39,14 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        bail!("Database path not specified. Set the database path in the first argument");
+    if let Some("help") = args.get(1).map(String::as_ref) {
+        println!("USAGE: poll (DATABASE_PATH) (BIND_ADDRESS)");
+        println!("The default DATABASE_PATH is ./db/main.db");
+        println!("The default BIND_ADDRESS is 0.0.0.0:8080.");
     }
-    let db_path = std::path::Path::new(&args[1]);
+
+    let db_path = args.get(1).map(String::as_ref).unwrap_or(DB_PATH_DEFAULT);
+    let db_path = std::path::Path::new(db_path);
     if !db_path.exists() {
         bail!(
             "Database file {:?} does not exist or could not be read.",
@@ -44,26 +54,51 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Read the admin token from envars
+    // Get bind address
+    let bind_address = args
+        .get(2)
+        .map(String::as_ref)
+        .unwrap_or(BIND_ADDRESS_DEFAULT);
+    log::info!("Setting the bind address to: {}", bind_address);
+
+    // Read the admin token from environmental variables
     let admin_token = std::env::var("POLL_ADMIN_TOKEN").ok();
     if admin_token.is_none() {
         log::warn!("Environment variable POLL_ADMIN_TOKEN not set - admin functions off.");
     }
 
+    // Read other environmental variables
+    let cleanup_interval =
+        util::get_env_duration_or("POLL_CLEANUP_INTERVAL", CLEANUP_INTERVAL_DEFAULT)?;
+    log::info!(
+        "Setting the cleanup interval to {} seconds.",
+        cleanup_interval.as_secs()
+    );
+    let create_limit = util::get_env_duration_or("POLL_CREATE_LIMIT", CREATE_LIMIT)?;
+    log::info!(
+        "Setting the create limit to {} seconds.",
+        create_limit.as_secs()
+    );
+    let vote_limit = util::get_env_duration_or("POLL_VOTE_LIMIT", VOTE_LIMIT)?;
+    log::info!(
+        "Setting the vote limit to {} seconds.",
+        vote_limit.as_secs()
+    );
+
     // SQLite database connection
     log::info!("Connecting to database: {} ...", db_path.to_str().unwrap());
-    let manager = SqliteConnectionManager::file(&db_path);
-    let pool = db::DbPool::new(manager)?;
+    let manager = SqliteConnectionManager::file(db_path);
+    let pool = DbPool::new(manager)?;
 
     log::info!("Connected to database!");
 
     // Create the rate limit store and a thread that periodically
     // checks and cleans up expired limits.
-    let limits = web::Data::new(rate::LimitStore::default());
+    let limits = web::Data::new(rate::LimitStore::new(create_limit, vote_limit));
     let l = limits.clone();
     rt::spawn(async move {
         let limits = l;
-        let mut interval = time::interval(RATE_LIMIT_CLEANUP_DURATION);
+        let mut interval = time::interval(cleanup_interval);
         loop {
             interval.tick().await;
             limits.cleanup();
@@ -79,10 +114,10 @@ async fn main() -> anyhow::Result<()> {
             .app_data(web::Data::new(admin::AdminToken(admin_token.clone())))
             .configure(app_config)
     })
-    .bind(BIND_ADDRESS)?
+    .bind(bind_address)?
     .run()
     .await
-    .context("An error occured when running HttpServer")
+    .context("An error occurred when running HttpServer")
 }
 
 fn app_config(config: &mut web::ServiceConfig) {
@@ -143,14 +178,21 @@ fn app_config(config: &mut web::ServiceConfig) {
         );
 }
 
-/// Handes the starting webpage
+/// Handles the starting webpage
 async fn index() -> Result<HttpResponse> {
     return_html!(include_str!("../static/index.html"))
 }
 
 /// Handles requests that don't match anything, returns error 404
 async fn handle_default() -> Result<HttpResponse> {
-    return_html!(include_str!("../static/404.html"))
+    Ok(HttpResponse::NotFound()
+        .content_type("text/html; charset=utf-8")
+        .body(include_str!("../static/404.html")))
+}
+
+#[derive(Deserialize)]
+struct CreateParams {
+    poll_type: Option<String>,
 }
 
 /// Handles poll creation
@@ -160,14 +202,12 @@ async fn handle_default() -> Result<HttpResponse> {
 /// Params:
 ///  - poll_type: PollType enum variant, determines the poll creation website,
 ///    see PollType::try_parse for parsing format
-async fn handle_create(req: HttpRequest) -> Result<HttpResponse> {
-    let query = QString::from(req.query_string());
-
+async fn handle_create(params: web::Query<CreateParams>) -> Result<HttpResponse> {
     // If there is a poll type specified
-    if let Some(ptype) = query.get("poll_type") {
-        let poll_type = PollType::try_parse(ptype)?;
-        let content = templates::CreateTemplate { poll_type }
-            .render()
+    if let Some(poll_type) = params.poll_type.as_ref() {
+        let poll_type = PollType::try_parse(poll_type)?;
+        let content = poll_type
+            .creation_site()
             .map_err(|e| UserError::InternalError(e.into()))?;
 
         return_html!(content)
@@ -177,7 +217,7 @@ async fn handle_create(req: HttpRequest) -> Result<HttpResponse> {
 }
 
 #[derive(Deserialize)]
-struct CreateParams {
+struct CreateDescParams {
     name: String,
     r#type: String,
     data: String,
@@ -191,7 +231,7 @@ struct CreateParams {
 ///    PollType::from_data function for the proper format
 async fn handle_create_desc(
     req: HttpRequest,
-    params: web::Form<CreateParams>,
+    params: web::Form<CreateDescParams>,
     db: web::Data<DbPool>,
 ) -> Result<HttpResponse> {
     // Check for rate limiting of poll creation for given IP
@@ -226,11 +266,11 @@ async fn handle_create_desc(
     log::info!("Inserting poll id: {} to database...", id);
     db::insert_poll(&db, poll).await?;
 
-    let content = PollCreatedTemplate {
+    let content = templates::PollCreatedTemplate {
         name,
-        voting_link: req.url_for("vote", &[&id.to_string()]).unwrap().as_str(),
-        results_link: req.url_for("results", &[&id.to_string()]).unwrap().as_str(),
-        admin_link: req.url_for("admin", &[&id.to_string()]).unwrap().as_str(),
+        voting_link: req.url_for("vote", [&id.to_string()]).unwrap().as_str(),
+        results_link: req.url_for("results", [&id.to_string()]).unwrap().as_str(),
+        admin_link: req.url_for("admin", [&id.to_string()]).unwrap().as_str(),
         admin_token: admin_token.as_str(),
     }
     .render()
@@ -239,6 +279,7 @@ async fn handle_create_desc(
     return_html!(content)
 }
 
+/// Handles the voting webpage
 async fn handle_vote(db: web::Data<DbPool>, poll_id: web::Path<String>) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
 
@@ -251,6 +292,10 @@ async fn handle_vote(db: web::Data<DbPool>, poll_id: web::Path<String>) -> Resul
     return_html!(content)
 }
 
+/// Handles the voting callback
+/// Params:
+///  - params: PollFormat-specific vote information, see the corresponding
+///    PollFormat::register_votes function for the proper format
 async fn handle_vote_desc(
     req: HttpRequest,
     db: web::Data<DbPool>,
@@ -264,19 +309,16 @@ async fn handle_vote_desc(
 
     let mut poll = db::get_poll(&db, poll_id).await?;
 
-    //let query = QString::from(req.query_string());
-    let query = QString::from(QString::from(params.as_str()));
-
     poll.format
-        .register_votes(&query)
-        .map_err(UserError::InternalError)?;
+        .register_votes(params.as_str())
+        .map_err(UserError::Voting)?;
     poll.data.voters += 1;
 
     db::update_poll(&db, &poll).await?;
 
-    let content = VotedTemplate {
+    let content = templates::VotedTemplate {
         results_link: req
-            .url_for("results", &[poll_id.to_string()])
+            .url_for("results", [poll_id.to_string()])
             .unwrap()
             .as_str(),
     }
@@ -286,7 +328,7 @@ async fn handle_vote_desc(
     return_html!(content)
 }
 
-/// Returns the results website for a given poll ID
+/// Handles the results website
 async fn handle_results(db: web::Data<DbPool>, poll_id: web::Path<String>) -> Result<HttpResponse> {
     let poll_id: PollID = PollID::try_from(poll_id.as_str())?;
 

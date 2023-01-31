@@ -11,7 +11,7 @@
 
 <body>
     <header>
-        <h2>Poll-inator 3000 admin page</h2>
+        <h2>Pollinator 3000 admin page</h2>
         <p>With great power comes great responsibility.</p>
     </header>
     <form id="form" method="post">
@@ -19,21 +19,21 @@
         <fieldset>
             <legend>Admin action</legend>
             <div class="poll_option">
-                <input type="radio" id="option_box" value="PurgeDatabase" name="action" checked/>
+                <input type="radio" id="PurgeDatabase" class="option_box" value="PurgeDatabase" name="action" checked/>
                 <label for="PurgeDatabase">Purge database</label>
             </div>
             <div class="poll_option">
-                <input type="radio" id="option_box" value="ResetLimits" name="action"/>
+                <input type="radio" id="ResetLimits" class="option_box" value="ResetLimits" name="action"/>
                 <label for="ResetLimits">Reset rate limits</label>
             </div>
             <div class="poll_option">
-                <input type="radio" id="option_box" value="ListPolls" name="action"/>
+                <input type="radio" id="ListPolls" class="option_box" value="ListPolls" name="action"/>
                 <label for="ListPolls">Show poll list</label>
             </div>
             <br>
             <div class="poll_option">
                 <label for="token">Admin token: </label>
-                <input id="token" name="token" pattern="[A-Za-z0-9]{11}">
+                <input id="token" name="token" pattern="[A-Za-z0-9]+">
             </div>
             <button type="submit">Execute</button>
         </fieldset>

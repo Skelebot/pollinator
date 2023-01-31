@@ -1,7 +1,7 @@
-use askama::Template;
 use crate::db::DbPool;
 use crate::poll::PollID;
 use crate::*;
+use askama::Template;
 use serde::Deserialize;
 
 use actix_web::{web, HttpResponse, Result};
@@ -30,15 +30,21 @@ pub struct AdminParams {
     action: AdminAction,
 }
 
+/// Handles the general administration webpage
 pub async fn handle_admin() -> Result<HttpResponse> {
     return_html!(include_str!("../static/admin.html"))
 }
 
+/// Handles the general administration webpage callback
+/// Params:
+///  - token: The admin token, should match the POLL_ADMIN_TOKEN environmental variable
+///  - action: an AdminAction enum member, specifies the action to be executed.
+/// Only the non-poll-specific administration actions can be executed from here.
 pub async fn handle_admin_action(
     db: web::Data<DbPool>,
     params: web::Form<AdminParams>,
     limits: web::Data<rate::LimitStore>,
-    admin_token : web::Data<AdminToken>,
+    admin_token: web::Data<AdminToken>,
 ) -> Result<HttpResponse> {
     match admin_token.0.as_ref() {
         None => return Err(UserError::AdminOff.into()),
@@ -63,16 +69,22 @@ pub async fn handle_admin_action(
                 .map_err(|e| UserError::InternalError(e.into()))?;
             return return_html!(content);
         }
-        _ => return Err(UserError::InvalidAdminAction.into())
+        _ => return Err(UserError::InvalidAdminAction.into()),
     }
 
     return_html!(format!("Action executed: {:?}", params.action))
 }
 
+/// Handles the poll-specific administration webpage
 pub async fn handle_poll_admin(_poll_id: web::Path<String>) -> Result<HttpResponse> {
     return_html!(include_str!("../static/poll_admin.html"))
 }
 
+/// Handles the poll-specific administration webpage callback
+/// Params:
+///  - token: The admin token, should match the POLL_ADMIN_TOKEN environmental variable
+///  - action: an AdminAction enum member, specifies the action to be executed.
+/// Only the poll-specific administration actions can be executed from here.
 pub async fn handle_poll_admin_action(
     db: web::Data<DbPool>,
     poll_id: web::Path<String>,
@@ -99,7 +111,7 @@ pub async fn handle_poll_admin_action(
         AdminAction::DeletePoll => {
             db::delete_poll(&db, poll.data.id).await?;
         }
-        _ => return Err(UserError::InvalidAdminAction.into())
+        _ => return Err(UserError::InvalidAdminAction.into()),
     }
 
     return_html!(format!("Action executed: {:?}", params.action))

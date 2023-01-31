@@ -1,33 +1,28 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use askama::Template;
 use bincode::{Decode, Encode};
 
-use crate::templates::{SimpleResultsTemplate, SimpleVoteTemplate};
-
-use super::*;
+use super::templates::*;
+use crate::poll::{PollData, PollFormat};
 
 #[derive(Encode, Decode)]
-pub struct SingleChoicePoll {
+pub struct MultipleChoicePoll {
     pub options: Vec<(String, u64)>,
 }
 
-impl PollFormat for SingleChoicePoll {
+impl PollFormat for MultipleChoicePoll {
+    /// Format:
+    /// `{option1},{option2},...,{optionN}
+    /// `{option}` - option name (string)
     fn from_data(data: &str) -> Result<Box<Self>, anyhow::Error>
     where
         Self: Sized,
     {
-        let options = data
-            .split(',')
-            .map(|s| (s.to_string(), 0u64))
-            .collect();
-        Ok(Box::new(SingleChoicePoll { options }))
-    }
-
-    fn create_site_add_option_script() -> Result<String, anyhow::Error>
-    where
-        Self: Sized,
-    {
-        Ok(String::new())
+        let options: Vec<(String, u64)> = data.split(',').map(|s| (s.to_string(), 0u64)).collect();
+        if options.len() < 2 {
+            return Err(anyhow!("Too few options specified"));
+        }
+        Ok(Box::new(MultipleChoicePoll { options }))
     }
 
     fn voting_site(&self, data: &PollData) -> Result<String, askama::Error> {
@@ -39,7 +34,7 @@ impl PollFormat for SingleChoicePoll {
         SimpleVoteTemplate {
             poll: data,
             options: &options,
-            multiple: false,
+            multiple: true,
         }
         .render()
     }
@@ -58,15 +53,25 @@ impl PollFormat for SingleChoicePoll {
         .render()
     }
 
-    fn register_votes(&mut self, query: &QString) -> Result<(), anyhow::Error> {
-        let resp = query
-            .get("response")
-            .context("'response' query element not found")?;
-        let opt: usize = resp.parse().context("'response' must be a number")?;
-        self.options
-            .get_mut(opt)
-            .context("'response' is outside of the range of options")?
-            .1 += 1;
+    /// Format:
+    /// response={n}&...&response={n}
+    /// n - indexes of options selected
+    fn register_votes(&mut self, query: &str) -> Result<(), anyhow::Error> {
+        if query.chars().filter(|c| *c == '&').count() + 1 != self.options.len() {
+            return Err(anyhow!(
+                "The number of query elements must be equal to the number of poll options"
+            ));
+        }
+        for opt in query.split('&') {
+            if !opt.starts_with("response=") {
+                return Err(anyhow!("Expected 'response' query element"));
+            }
+            let opt: usize = opt[9..].parse().context("'response' must be a number")?;
+            self.options
+                .get_mut(opt)
+                .context("'response' is outside of the range of options")?
+                .1 += 1;
+        }
         Ok(())
     }
 

@@ -1,3 +1,4 @@
+use rusqlite::types::Type;
 use thiserror::Error;
 
 use crate::{
@@ -44,10 +45,9 @@ pub async fn get_poll(pool: &DbPool, id: PollID) -> Result<Poll, Error> {
 
     let mut poll_iter = query
         .query_map([id.index()], |row| {
-            use rusqlite::types::Type;
-            let ptype = PollType::try_parse(&row.get::<_, String>("type")?)
+            let ptype = PollType::try_parse(&row.get::<_, String>(2)?)
                 .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, Type::Text, e.into()))?;
-            let randpart: String = row.get("randpart")?;
+            let randpart: String = row.get(1)?;
             let id_randpart = util::read_base64_u64(&randpart)
                 .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, Type::Text, e.into()))?;
             let read_id: PollID = PollID::new(id.0, id_randpart);
@@ -55,20 +55,18 @@ pub async fn get_poll(pool: &DbPool, id: PollID) -> Result<Poll, Error> {
                 data: PollData {
                     id: read_id,
                     ptype,
-                    name: row.get("name")?,
-                    date_created: chrono::DateTime::parse_from_rfc3339(
-                        &row.get::<_, String>("date_created")?,
-                    )
-                    .map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(3, Type::Text, e.into())
-                    })?
-                    .into(),
-                    admin_link: row.get("admin_link")?,
-                    voters: row.get("voters")?,
+                    name: row.get(3)?,
+                    date_created: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
+                        .map_err(|e| {
+                            rusqlite::Error::FromSqlConversionFailure(3, Type::Text, e.into())
+                        })?
+                        .into(),
+                    admin_link: row.get(5)?,
+                    voters: row.get(6)?,
                 },
-                format: create_poll_format_from_bytes(ptype, row.get("format_data")?).map_err(
-                    |e| rusqlite::Error::FromSqlConversionFailure(7, Type::Blob, e.into()),
-                )?,
+                format: create_poll_format_from_bytes(ptype, row.get(7)?).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(7, Type::Blob, e.into())
+                })?,
             })
         })
         .map_err(Error::Query)?;
@@ -98,6 +96,7 @@ pub async fn last_id(pool: &DbPool) -> Result<usize, Error> {
         // If there are no rows, this returns InvalidColumnType, so assume 0
         .query_map([], |row| Ok(row.get(0).unwrap_or(0)))
         .map_err(Error::Database)?;
+
     // This error (Internal) shouldn't ever happen, but better be safe
     let id = i.next().ok_or(Error::Internal)?.map_err(Error::Database)?;
     Ok(id)
@@ -145,12 +144,11 @@ pub async fn update_poll(pool: &DbPool, poll: &Poll) -> Result<bool, Error> {
         params,
     )
     .map_err(Error::Query)
-    // Safety: id is unique, so the number of rows updated is always 0 or 1
+    // id is unique, so the number of rows updated should be 0 or 1
     .map(|u| u == 1)
 }
 
-/// Completely clears the polls table,
-/// returns number of deleted rows
+/// Completely clears the polls table, returns number of deleted rows
 pub async fn purge(pool: &DbPool) -> Result<usize, Error> {
     pool.get()
         .map_err(Error::Connection)?
@@ -164,7 +162,7 @@ pub async fn delete_poll(pool: &DbPool, id: PollID) -> Result<bool, Error> {
         .map_err(Error::Connection)?
         .execute("DELETE FROM polls WHERE id = ?1", [id.index()])
         .map_err(Error::Query)
-        // Safety: id is unique, so the number of rows updated is always 0 or 1
+        // id is unique, so the number of rows updated should be 0 or 1
         .map(|u| u == 1)
 }
 
@@ -176,7 +174,10 @@ pub async fn list_polls(pool: &DbPool) -> Result<Vec<crate::templates::PollInfo>
 
     let poll_iter = query
         .query_map([], |row| {
-            let id = PollID::new(row.get(0)?, row.get(1)?);
+            let randpart: String = row.get(1)?;
+            let id_randpart = util::read_base64_u64(&randpart)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, Type::Text, e.into()))?;
+            let id = PollID::new(row.get(0)?, id_randpart);
             Ok(crate::templates::PollInfo {
                 id,
                 name: row.get(3)?,

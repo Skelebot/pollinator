@@ -28,13 +28,18 @@ impl DerefMut for LimitMap {
 pub struct LimitStore {
     pub create: Mutex<HashMap<IpAddr, Instant>>,
     pub vote: Mutex<HashMap<(IpAddr, usize), Instant>>,
+    create_limit: Duration,
+    vote_limit: Duration,
 }
 
 impl LimitStore {
-    // a single IP must wait 10 minutes before creating a new poll
-    const CREATE_LIMIT: Duration = Duration::from_secs(10 * 60);
-    // a single IP must wait 30 minutes before voting again
-    const VOTE_LIMIT: Duration = Duration::from_secs(30 * 60);
+    pub fn new(create_limit: Duration, vote_limit: Duration) -> Self {
+        LimitStore {
+            create_limit,
+            vote_limit,
+            ..Default::default()
+        }
+    }
 
     // Called periodically to clean up now-irrelevant limits
     pub fn cleanup(&self) {
@@ -42,11 +47,11 @@ impl LimitStore {
         self.create
             .lock()
             .unwrap()
-            .retain(|_, v| now - *v <= Self::CREATE_LIMIT);
+            .retain(|_, v| now - *v <= self.create_limit);
         self.vote
             .lock()
             .unwrap()
-            .retain(|_, v| now - *v <= Self::VOTE_LIMIT);
+            .retain(|_, v| now - *v <= self.vote_limit);
     }
 
     /// Resets all limits
@@ -61,7 +66,7 @@ impl LimitStore {
         let mut limits = self.create.lock().unwrap();
         let now = Instant::now();
         if let Some(instant) = limits.get(&addr) {
-            if now - *instant < Self::CREATE_LIMIT {
+            if now - *instant < self.create_limit {
                 true
             } else {
                 limits.remove(&addr);
@@ -79,7 +84,7 @@ impl LimitStore {
         let mut limits = self.vote.lock().unwrap();
         let now = Instant::now();
         if let Some(instant) = limits.get(&(addr, poll_id.index())) {
-            if now - *instant < Self::VOTE_LIMIT {
+            if now - *instant < self.vote_limit {
                 true
             } else {
                 limits.remove(&(addr, poll_id.index()));
