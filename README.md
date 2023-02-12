@@ -5,6 +5,8 @@ etc.
 Written in Rust, HTML/CSS and JavaScript.
 Uses Sqlite3 for data storage.
 
+A testing instance of this application is hosted [here](http://84.10.40.254/ "Testing instance")
+
 ![Ranked poll results](resources/results.png)
 
 Goals:
